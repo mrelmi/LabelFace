@@ -51,8 +51,8 @@ from libs.create_ml_io import CreateMLReader
 from libs.create_ml_io import JSON_EXT
 from libs.ustr import ustr
 from libs.hashableQListWidgetItem import HashableQListWidgetItem
-# c96
-from FR import Face
+
+from Boxes.BR import BoxRecommender
 
 __appname__ = 'labelImg'
 
@@ -83,9 +83,9 @@ class MainWindow(QMainWindow, WindowMixin):
         super(MainWindow, self).__init__()
         self.setWindowTitle(__appname__)
 
-        # automatic box c96
-        self.automatic_box = True
-        self.detector = Face()
+        # automatic box
+        self.automatic_box = False
+        self.box_recommender = BoxRecommender()
 
         # Load setting in the main thread
         self.settings = Settings()
@@ -927,11 +927,12 @@ class MainWindow(QMainWindow, WindowMixin):
                     parent=self, listItem=self.labelHist)
 
             # Sync single class mode from PR#106
-            if self.singleClassMode.isChecked() and self.lastLabel and not self.automatic_box:
-                text = self.lastLabel
-            elif not self.automatic_box:
-                text = self.labelDialog.popUp(text=self.prevLabelText)
-                self.lastLabel = text
+            if not self.automatic_box :
+                if self.singleClassMode.isChecked() and self.lastLabel:
+                    text = self.lastLabel
+                else:
+                    text = self.labelDialog.popUp(text=self.prevLabelText)
+                    self.lastLabel = text
             else:
                 text = 'unknown'
                 self.lastLabel = text
@@ -1120,9 +1121,8 @@ class MainWindow(QMainWindow, WindowMixin):
             self.canvas.setFocus(True)
 
             if self.automatic_box:
-                self.detector.detector(image_path=self.filePath)
-                points = self.detector.points
-                self.automaticShape(points)
+                self.box_recommender.detect(image_path=self.filePath)
+                self.drawPoints(self.box_recommender.points)
             return True
         return False
 
@@ -1581,7 +1581,7 @@ class MainWindow(QMainWindow, WindowMixin):
     def toogleDrawSquare(self):
         self.canvas.setDrawingShapeToSquare(self.drawSquaresOption.isChecked())
 
-    def automaticShape(self, points):
+    def drawPoints(self, points):
 
         for i in range(len(points) // 2):
             p1x, p1y = points[2 * i]
