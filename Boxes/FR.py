@@ -23,3 +23,26 @@ class FaceDetector:
             self.score.append(detections[i][4])
 
 
+if __name__ == '__main__':
+    import cv2
+    import numpy as np
+
+    detector = face_detection.build_detector("RetinaNetResNet50", confidence_threshold=0.5, nms_iou_threshold=0.3)
+    image = cv2.imread('2.jpg')
+    images = np.expand_dims(image, axis=0)
+    output = face_detection.RetinaNetResNet50.batched_detect_with_landmarks(detector, images)
+
+    print(output)
+    print(len(output[1][0]))
+    for i in range(len(output[1][0])):
+        for j in range(5):
+
+            p1 = np.round(output[1][0][i][j][0])
+            p2 = np.round(output[1][0][i][j][1])
+            if j == 1:
+                cv2.line(image, (np.round(output[1][0][i][j-1][0]), np.round(output[1][0][i][j-1][1])), (p1, p2),
+                         (255, 255, 0))
+            cv2.circle(image, (p1, p2), 4, (255, 0, 0))
+
+    cv2.imshow("image", image)
+    cv2.waitKey()
