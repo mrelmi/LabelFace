@@ -13,7 +13,7 @@ class BoxRecommender:
             self.detector = FaceDetector("retina")
 
     def detect(self, image=None, image_path=None):
-        if self.image is not None:
+        if image is not None:
             self.image = image
         else:
             image = cv2.imread(image_path)[:, :, ::-1]

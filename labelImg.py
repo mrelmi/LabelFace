@@ -86,7 +86,7 @@ class MainWindow(QMainWindow, WindowMixin):
         self.setWindowTitle(__appname__)
 
         # automatic box
-        self.automatic_box = False
+        self.automatic_box = True
         self.box_recommender = BoxRecommender()
 
         # Load setting in the main thread
