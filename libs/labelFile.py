@@ -13,6 +13,7 @@ from libs.pascal_voc_io import XML_EXT
 from libs.create_ml_io import CreateMLWriter
 from libs.create_ml_io import JSON_EXT
 from libs.csv_io import CSVWriter
+from libs.csv_io import CSV_EXT
 
 from enum import Enum
 import os.path
@@ -23,7 +24,6 @@ class LabelFileFormat(Enum):
     PASCAL_VOC= 1
     YOLO = 2
     CREATE_ML = 3
-    # my code c96
     CSV = 4
 
 class LabelFileError(Exception):
@@ -119,7 +119,6 @@ class LabelFile(object):
         return
 
 
-    # my code c96
     def saveCsvFormat(self,filename, shapes, imagePath, imageData, classList,
                             lineColor=None, fillColor=None, databaseSrc=None):
         imgFolderPath = os.path.dirname(imagePath)

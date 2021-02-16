@@ -49,6 +49,8 @@ from libs.yolo_io import YoloReader
 from libs.yolo_io import TXT_EXT
 from libs.create_ml_io import CreateMLReader
 from libs.create_ml_io import JSON_EXT
+from libs.csv_io import CsvReader
+from libs.csv_io import CSV_EXT
 from libs.ustr import ustr
 from libs.hashableQListWidgetItem import HashableQListWidgetItem
 
@@ -251,6 +253,8 @@ class MainWindow(QMainWindow, WindowMixin):
                 return ('&YOLO', 'format_yolo')
             elif format == LabelFileFormat.CREATE_ML:
                 return ('&CreateML', 'format_createml')
+            elif format == LabelFileFormat.CSV:
+                return ('&CSV','format_csv')
 
         save_format = action(getFormatMeta(self.labelFileFormat)[0],
                              self.change_format, 'Ctrl+',
@@ -544,12 +548,20 @@ class MainWindow(QMainWindow, WindowMixin):
             self.labelFileFormat = LabelFileFormat.CREATE_ML
             LabelFile.suffix = JSON_EXT
 
+        elif save_format == FORMAT_CSV:
+            self.actions.save_format.setText(FORMAT_CSV)
+            self.actions.save_format.setIcon(newIcon("format_csv"))
+            self.labelFileFormat = LabelFileFormat.CSV
+            LabelFile.suffix = CSV_EXT
+
     def change_format(self):
         if self.labelFileFormat == LabelFileFormat.PASCAL_VOC:
             self.set_format(FORMAT_YOLO)
         elif self.labelFileFormat == LabelFileFormat.YOLO:
             self.set_format(FORMAT_CREATEML)
         elif self.labelFileFormat == LabelFileFormat.CREATE_ML:
+            self.set_format(FORMAT_CSV)
+        elif self.labelFileFormat == LabelFileFormat.CSV:
             self.set_format(FORMAT_PASCALVOC)
         else:
             raise ValueError('Unknown label file format.')
@@ -872,6 +884,14 @@ class MainWindow(QMainWindow, WindowMixin):
                     annotationFilePath += JSON_EXT
                 self.labelFile.saveCreateMLFormat(annotationFilePath, shapes, self.filePath, self.imageData,
                                                   self.labelHist, self.lineColor.getRgb(), self.fillColor.getRgb())
+
+            elif self.labelFileFormat == LabelFileFormat.CSV:
+                if annotationFilePath[-4:].lower() != ".csv":
+                    annotationFilePath += CSV_EXT
+                self.labelFile.saveCsvFormat(annotationFilePath, shapes, self.filePath, self.imageData, self.labelHist,
+                                              self.lineColor.getRgb(), self.fillColor.getRgb())
+
+
             else:
                 self.labelFile.save(annotationFilePath, shapes, self.filePath, self.imageData,
                                     self.lineColor.getRgb(), self.fillColor.getRgb())
@@ -927,7 +947,7 @@ class MainWindow(QMainWindow, WindowMixin):
                     parent=self, listItem=self.labelHist)
 
             # Sync single class mode from PR#106
-            if not self.automatic_box :
+            if not self.automatic_box:
                 if self.singleClassMode.isChecked() and self.lastLabel:
                     text = self.lastLabel
                 else:
@@ -1133,7 +1153,7 @@ class MainWindow(QMainWindow, WindowMixin):
             xmlPath = os.path.join(self.defaultSaveDir, basename + XML_EXT)
             txtPath = os.path.join(self.defaultSaveDir, basename + TXT_EXT)
             jsonPath = os.path.join(self.defaultSaveDir, filedir + JSON_EXT)
-
+            csvPath = os.path.join(self.defaultSaveDir,basename + CSV_EXT)
             """Annotation file priority:
             PascalXML > YOLO
             """
@@ -1143,14 +1163,18 @@ class MainWindow(QMainWindow, WindowMixin):
                 self.loadYOLOTXTByFilename(txtPath)
             elif os.path.isfile(jsonPath):
                 self.loadCreateMLJSONByFilename(jsonPath, filePath)
-
+            elif os.path.isfile(csvPath):
+                self.loadCsvByFilename(csvPath)
         else:
             xmlPath = os.path.splitext(filePath)[0] + XML_EXT
             txtPath = os.path.splitext(filePath)[0] + TXT_EXT
+            csvPath = os.path.splitext(filePath)[0] + CSV_EXT
             if os.path.isfile(xmlPath):
                 self.loadPascalXMLByFilename(xmlPath)
             elif os.path.isfile(txtPath):
                 self.loadYOLOTXTByFilename(txtPath)
+            elif os.path.isfile(csvPath):
+                self.loadCsvByFilename(csvPath)
 
     def resizeEvent(self, event):
         if self.canvas and not self.image.isNull() \
@@ -1566,7 +1590,18 @@ class MainWindow(QMainWindow, WindowMixin):
         shapes = crmlParseReader.get_shapes()
         self.loadLabels(shapes)
         self.canvas.verified = crmlParseReader.verified
+    def loadCsvByFilename(self, csvPath):
+        if self.filePath is None:
+            return
+        if os.path.isfile(csvPath) is False:
+            return
 
+        self.set_format(FORMAT_CSV)
+        tCsvParseReader = CsvReader(csvPath, self.image)
+        shapes = tCsvParseReader.getShapes()
+        self.loadLabels(shapes)
+        self.canvas.verified = tCsvParseReader.verified
+        
     def copyPreviousBoundingBoxes(self):
         currIndex = self.mImgList.index(self.filePath)
         if currIndex - 1 >= 0:

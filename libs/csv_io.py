@@ -2,13 +2,10 @@
 # -*- coding: utf8 -*-
 import sys
 import os
-from xml.etree import ElementTree
-from xml.etree.ElementTree import Element, SubElement
-from lxml import etree
 import codecs
 from libs.constants import DEFAULT_ENCODING
 
-TXT_EXT = '.csv'
+CSV_EXT = '.csv'
 ENCODE_METHOD = DEFAULT_ENCODING
 
 class CSVWriter:
@@ -28,7 +25,7 @@ class CSVWriter:
         bndbox['difficult'] = difficult
         self.boxlist.append(bndbox)
 
-    def BndBox2YoloLine(self, box, classList=[]):
+    def BndBox2CsvLine(self, box, classList=[]):
         xmin = box['xmin']
         xmax = box['xmax']
         ymin = box['ymin']
@@ -56,7 +53,7 @@ class CSVWriter:
 
         if targetFile is None:
             out_file = open(
-            self.filename + TXT_EXT, 'w', encoding=ENCODE_METHOD)
+            self.filename + CSV_EXT, 'w', encoding=ENCODE_METHOD)
             classesFile = os.path.join(os.path.dirname(os.path.abspath(self.filename)), "classes.txt")
             out_class_file = open(classesFile, 'w')
 
@@ -67,7 +64,7 @@ class CSVWriter:
 
 
         for box in self.boxlist:
-            classIndex, xcen, ycen, w, h = self.BndBox2YoloLine(box, classList)
+            classIndex, xcen, ycen, w, h = self.BndBox2CsvLine(box, classList)
             # print (classIndex, xcen, ycen, w, h)
             out_file.write("%d %.6f %.6f %.6f %.6f\n" % (classIndex, xcen, ycen, w, h))
 
