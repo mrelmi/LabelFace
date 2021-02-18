@@ -67,7 +67,7 @@ class CSVWriter:
         with open(targetFile, mode='w', newline='') as f:
             fieldnames = ['Id', 'xcen', 'ycen', 'w', 'h']
             writer = csv.DictWriter(f, fieldnames)
-
+            writer.writeheader()
             for box in self.boxlist:
                 classIndex, xcen, ycen, w, h = self.BndBox2CsvLine(box, classList)
                 # out_file.write("%d %.6f %.6f %.6f %.6f\n" % (classIndex, xcen, ycen, w, h))
@@ -139,8 +139,14 @@ class CsvReader:
         with open(self.filepath, mode='r')as r:
             readerField = ['Id', 'xcen', 'ycen', 'w', 'h']
             reader = csv.DictReader(r, readerField)
-        for raw in reader:
-            classIndex, xcen, ycen, w, h = raw
-            label, xmin, ymin, xmax, ymax = self.csvLine2Shape(classIndex, xcen, ycen, w, h)
+            i = 0
+            for raw in reader:
+                if i == 0 :
+                    i = 1
+                    continue
+                classIndex = raw['Id']
 
-            self.addShape(label, xmin, ymin, xmax, ymax, False)
+                classIndex, xcen, ycen, w, h = (raw['Id'],raw['xcen'],raw['ycen'],raw['w'],raw['h'])
+                label, xmin, ymin, xmax, ymax = self.csvLine2Shape(classIndex, xcen, ycen, w, h)
+
+                self.addShape(label, xmin, ymin, xmax, ymax, False)

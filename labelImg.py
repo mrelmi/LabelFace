@@ -88,6 +88,7 @@ class MainWindow(QMainWindow, WindowMixin):
         # automatic box
         self.automatic_box = True
         self.box_recommender = BoxRecommender()
+        self.saved_label_exist = False
 
         # Load setting in the main thread
         self.settings = Settings()
@@ -1140,9 +1141,10 @@ class MainWindow(QMainWindow, WindowMixin):
 
             self.canvas.setFocus(True)
 
-            if self.automatic_box:
+            if self.automatic_box and not self.saved_label_exist:
                 self.box_recommender.detect(image_path=self.filePath)
                 self.drawPoints(self.box_recommender.points)
+            self.saved_label_exist = False
             return True
         return False
 
@@ -1159,22 +1161,29 @@ class MainWindow(QMainWindow, WindowMixin):
             """
             if os.path.isfile(xmlPath):
                 self.loadPascalXMLByFilename(xmlPath)
+                self.saved_label_exist = True
             elif os.path.isfile(txtPath):
                 self.loadYOLOTXTByFilename(txtPath)
+                self.saved_label_exist = True
             elif os.path.isfile(jsonPath):
                 self.loadCreateMLJSONByFilename(jsonPath, filePath)
+                self.saved_label_exist = True
             elif os.path.isfile(csvPath):
                 self.loadCsvByFilename(csvPath)
+                self.saved_label_exist = True
         else:
             xmlPath = os.path.splitext(filePath)[0] + XML_EXT
             txtPath = os.path.splitext(filePath)[0] + TXT_EXT
             csvPath = os.path.splitext(filePath)[0] + CSV_EXT
             if os.path.isfile(xmlPath):
                 self.loadPascalXMLByFilename(xmlPath)
+                self.saved_label_exist = True
             elif os.path.isfile(txtPath):
                 self.loadYOLOTXTByFilename(txtPath)
+                self.saved_label_exist = True
             elif os.path.isfile(csvPath):
                 self.loadCsvByFilename(csvPath)
+                self.saved_label_exist = True
 
     def resizeEvent(self, event):
         if self.canvas and not self.image.isNull() \
