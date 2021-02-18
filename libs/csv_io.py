@@ -4,9 +4,11 @@ import sys
 import os
 import codecs
 from libs.constants import DEFAULT_ENCODING
+import csv
 
 CSV_EXT = '.csv'
 ENCODE_METHOD = DEFAULT_ENCODING
+
 
 class CSVWriter:
 
@@ -48,12 +50,12 @@ class CSVWriter:
 
     def save(self, classList=[], targetFile=None):
 
-        out_file = None #Update yolo .txt
-        out_class_file = None   #Update class list .txt
+        out_file = None  # Update yolo .txt
+        out_class_file = None  # Update class list .txt
 
         if targetFile is None:
             out_file = open(
-            self.filename + CSV_EXT, 'w', encoding=ENCODE_METHOD)
+                self.filename + CSV_EXT, 'w', encoding=ENCODE_METHOD)
             classesFile = os.path.join(os.path.dirname(os.path.abspath(self.filename)), "classes.txt")
             out_class_file = open(classesFile, 'w')
 
@@ -62,20 +64,20 @@ class CSVWriter:
             classesFile = os.path.join(os.path.dirname(os.path.abspath(targetFile)), "classes.txt")
             out_class_file = open(classesFile, 'w')
 
+        with open(targetFile, mode='w', newline='') as f:
+            fieldnames = ['Id', 'xcen', 'ycen', 'w', 'h']
+            writer = csv.DictWriter(f, fieldnames)
 
-        for box in self.boxlist:
-            classIndex, xcen, ycen, w, h = self.BndBox2CsvLine(box, classList)
-            # print (classIndex, xcen, ycen, w, h)
-            out_file.write("%d %.6f %.6f %.6f %.6f\n" % (classIndex, xcen, ycen, w, h))
+            for box in self.boxlist:
+                classIndex, xcen, ycen, w, h = self.BndBox2CsvLine(box, classList)
+                # out_file.write("%d %.6f %.6f %.6f %.6f\n" % (classIndex, xcen, ycen, w, h))
+                writer.writerow({'Id': classIndex, 'xcen': xcen, 'ycen': ycen, 'w': w, 'h': h})
 
-        # print (classList)
-        # print (out_class_file)
         for c in classList:
-            out_class_file.write(c+'\n')
+            out_class_file.write(c + '\n')
 
         out_class_file.close()
         out_file.close()
-
 
 
 class CsvReader:
@@ -100,7 +102,7 @@ class CsvReader:
         # print (self.classes)
 
         imgSize = [image.height(), image.width(),
-                      1 if image.isGrayscale() else 3]
+                   1 if image.isGrayscale() else 3]
 
         self.imgSize = imgSize
 
@@ -108,7 +110,7 @@ class CsvReader:
         # try:
         self.parseCsvFormat()
         # except:
-            # pass
+        # pass
 
     def getShapes(self):
         return self.shapes
@@ -134,10 +136,11 @@ class CsvReader:
         return label, xmin, ymin, xmax, ymax
 
     def parseCsvFormat(self):
-        bndBoxFile = open(self.filepath, 'r')
-        for bndBox in bndBoxFile:
-            classIndex, xcen, ycen, w, h = bndBox.strip().split(' ')
+        with open(self.filepath, mode='r')as r:
+            readerField = ['Id', 'xcen', 'ycen', 'w', 'h']
+            reader = csv.DictReader(r, readerField)
+        for raw in reader:
+            classIndex, xcen, ycen, w, h = raw
             label, xmin, ymin, xmax, ymax = self.csvLine2Shape(classIndex, xcen, ycen, w, h)
 
-            # Caveat: difficult flag is discarded when saved as yolo format.
             self.addShape(label, xmin, ymin, xmax, ymax, False)
