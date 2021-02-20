@@ -46,7 +46,8 @@ class CSVWriter:
 
         classIndex = classList.index(boxName)
 
-        return classIndex, xcen, ycen, w, h
+        # return classIndex, xcen, ycen, w, h
+        return classIndex, xmin, ymin, xmax, ymax
 
     def save(self, classList=[], targetFile=None):
 
@@ -65,13 +66,12 @@ class CSVWriter:
             out_class_file = open(classesFile, 'w')
 
         with open(targetFile, mode='w', newline='') as f:
-            fieldnames = ['Id', 'xcen', 'ycen', 'w', 'h']
+            fieldnames = ['Id', 'xmin', 'ymin', 'xmax', 'ymax']
             writer = csv.DictWriter(f, fieldnames)
-            writer.writeheader()
             for box in self.boxlist:
-                classIndex, xcen, ycen, w, h = self.BndBox2CsvLine(box, classList)
+                classIndex, xmin, ymin, xmax, ymax = self.BndBox2CsvLine(box, classList)
                 # out_file.write("%d %.6f %.6f %.6f %.6f\n" % (classIndex, xcen, ycen, w, h))
-                writer.writerow({'Id': classIndex, 'xcen': xcen, 'ycen': ycen, 'w': w, 'h': h})
+                writer.writerow({'Id': classIndex, 'xmin': xmin, 'ymin': ymin, 'xmax': xmax, 'ymax': ymax})
 
         for c in classList:
             out_class_file.write(c + '\n')
@@ -137,16 +137,12 @@ class CsvReader:
 
     def parseCsvFormat(self):
         with open(self.filepath, mode='r')as r:
-            readerField = ['Id', 'xcen', 'ycen', 'w', 'h']
+            readerField = ['Id', 'xmin', 'ymin', 'xmax', 'ymax']
             reader = csv.DictReader(r, readerField)
-            i = 0
             for raw in reader:
-                if i == 0 :
-                    i = 1
-                    continue
-                classIndex = raw['Id']
 
-                classIndex, xcen, ycen, w, h = (raw['Id'],raw['xcen'],raw['ycen'],raw['w'],raw['h'])
-                label, xmin, ymin, xmax, ymax = self.csvLine2Shape(classIndex, xcen, ycen, w, h)
+                classIndex, xmin, ymin , xmax ,ymax= (int(raw['Id']), int(raw['xmin']), int(raw['ymin']), int(raw['xmax']), int(raw['ymax']))
+                label = self.classes[int(classIndex)]
 
                 self.addShape(label, xmin, ymin, xmax, ymax, False)
+
