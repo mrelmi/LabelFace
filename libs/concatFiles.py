@@ -26,3 +26,4 @@ def concatcsv(path=None):
                                              'ymin': raw['ymin'], 'xmax': raw['xmax'], 'ymax': raw['ymax']})
 
 
+concatcsv('F:/picture/5')
