@@ -8,9 +8,15 @@ import platform
 import re
 import sys
 import subprocess
+import cv2
+import numpy as np
 
 from functools import partial
 from collections import defaultdict
+from sklearn.metrics.pairwise import cosine_similarity
+
+from Boxes.FR import pad_batch, norm_crop
+from libs.pictureDialog import PictureDialog
 
 import PyQt5
 
@@ -55,6 +61,8 @@ from libs.ustr import ustr
 from libs.hashableQListWidgetItem import HashableQListWidgetItem
 
 from Boxes.BR import BoxRecommender
+from os import listdir
+from os.path import isfile, join
 
 __appname__ = 'labelImg'
 
@@ -85,11 +93,13 @@ class MainWindow(QMainWindow, WindowMixin):
         super(MainWindow, self).__init__()
         self.setWindowTitle(__appname__)
 
-        # automatic box
-        self.automatic_box = True
+        # Recommender
         self.box_recommender = BoxRecommender()
         self.saved_label_exist = False
-
+        self.similarityCounts = -1
+        self.similaritylabels = []
+        self.similarityurls = []
+        self.embs = []
         # Load setting in the main thread
         self.settings = Settings()
         self.settings.load()
@@ -255,7 +265,7 @@ class MainWindow(QMainWindow, WindowMixin):
             elif format == LabelFileFormat.CREATE_ML:
                 return ('&CreateML', 'format_createml')
             elif format == LabelFileFormat.CSV:
-                return ('&CSV','format_csv')
+                return ('&CSV', 'format_csv')
 
         save_format = action(getFormatMeta(self.labelFileFormat)[0],
                              self.change_format, 'Ctrl+',
@@ -395,6 +405,10 @@ class MainWindow(QMainWindow, WindowMixin):
         self.autoSaving = QAction(getStr('autoSaveMode'), self)
         self.autoSaving.setCheckable(True)
         self.autoSaving.setChecked(settings.get(SETTING_AUTO_SAVE, False))
+        # recommender : Enable auto detection
+        self.recommender = QAction(getStr('recommendMode'), self)
+        self.recommender.setCheckable(True)
+        self.recommender.setChecked(settings.get(SETTING_RECOMMENDER, False))
         # Sync single class mode from PR#106
         self.singleClassMode = QAction(getStr('singleClsMode'), self)
         self.singleClassMode.setShortcut("Ctrl+Shift+S")
@@ -414,6 +428,7 @@ class MainWindow(QMainWindow, WindowMixin):
         addActions(self.menus.help, (help, showInfo))
         addActions(self.menus.view, (
             self.autoSaving,
+            self.recommender,
             self.singleClassMode,
             self.displayLabelOption,
             labels, advancedMode, None,
@@ -488,6 +503,8 @@ class MainWindow(QMainWindow, WindowMixin):
         self.canvas.setDrawingColor(self.lineColor)
         # Add chris
         Shape.difficult = self.difficult
+
+        # self.preProcessing()
 
         def xbool(x):
             if isinstance(x, QVariant):
@@ -731,7 +748,45 @@ class MainWindow(QMainWindow, WindowMixin):
         item = self.currentItem()
         if not item:
             return
-        text = self.labelDialog.popUp(item.text())
+        # text = self.labelDialog.popUp(item.text())
+        embs = []
+        with open('test.npy', 'rb') as f:
+            for i in range(10):
+                embs.append(np.load(f))
+        image = cv2.imread(self.filePath)
+        points = []
+        for shape in self.canvas.shapes:
+            if shape.selected:
+                points.append(round(shape.points[0].x()))
+                points.append(round(shape.points[0].y()))
+                points.append(round(shape.points[2].x()))
+                points.append(round(shape.points[2].y()))
+        crop = image[points[1]-10:points[3]+10,points[0]-10:points[2]+10]
+
+        boxes, emb = self.box_recommender.detector.detectWithLandMark(crop,
+                                                                      self.box_recommender.detector.detector)
+        indexes = []
+        for i in range(len(embs)):
+
+            a = cosine_similarity(emb, embs[i])
+            if a[0][0] > 0.6:
+                indexes.append(i)
+        path = 'Boxes/data/'
+        files = [f for f in listdir(path) if isfile(join(path, f, '0001.jpg'))]
+        urls = []
+        names = []
+        for i in range(len(indexes)):
+            urls.append(join(path, files[indexes[i]], '0001.jpg'))
+            names.append(files[indexes[i]])
+        pd = PictureDialog()
+        pd.showWindow(len(indexes), names, urls)
+        # pd.showWindow(2, ['asghar', 'ahmad'], ['lr.jpg', 'lr.jpg'])
+        if pd.clickedItem is None:
+            text = item.text()
+            if pd.newId is not None:
+                text = pd.newId[0]
+        else:
+            text = pd.clickedItem
         if text is not None:
             item.setText(text)
             item.setBackground(generateColorByText(text))
@@ -890,7 +945,7 @@ class MainWindow(QMainWindow, WindowMixin):
                 if annotationFilePath[-4:].lower() != ".csv":
                     annotationFilePath += CSV_EXT
                 self.labelFile.saveCsvFormat(annotationFilePath, shapes, self.filePath, self.imageData, self.labelHist,
-                                              self.lineColor.getRgb(), self.fillColor.getRgb())
+                                             self.lineColor.getRgb(), self.fillColor.getRgb())
 
 
             else:
@@ -948,7 +1003,7 @@ class MainWindow(QMainWindow, WindowMixin):
                     parent=self, listItem=self.labelHist)
 
             # Sync single class mode from PR#106
-            if not self.automatic_box:
+            if not self.recommender.isChecked():
                 if self.singleClassMode.isChecked() and self.lastLabel:
                     text = self.lastLabel
                 else:
@@ -1140,8 +1195,7 @@ class MainWindow(QMainWindow, WindowMixin):
                 self.labelList.item(self.labelList.count() - 1).setSelected(True)
 
             self.canvas.setFocus(True)
-
-            if self.automatic_box and not self.saved_label_exist:
+            if self.recommender.isChecked() and not self.saved_label_exist:
                 self.box_recommender.detect(image_path=self.filePath)
                 self.drawPoints(self.box_recommender.points)
             self.saved_label_exist = False
@@ -1155,7 +1209,7 @@ class MainWindow(QMainWindow, WindowMixin):
             xmlPath = os.path.join(self.defaultSaveDir, basename + XML_EXT)
             txtPath = os.path.join(self.defaultSaveDir, basename + TXT_EXT)
             jsonPath = os.path.join(self.defaultSaveDir, filedir + JSON_EXT)
-            csvPath = os.path.join(self.defaultSaveDir,basename + CSV_EXT)
+            csvPath = os.path.join(self.defaultSaveDir, basename + CSV_EXT)
             """Annotation file priority:
             PascalXML > YOLO
             """
@@ -1247,6 +1301,7 @@ class MainWindow(QMainWindow, WindowMixin):
             settings[SETTING_LAST_OPEN_DIR] = ''
 
         settings[SETTING_AUTO_SAVE] = self.autoSaving.isChecked()
+        settings[SETTING_RECOMMENDER] = self.recommender.isChecked()
         settings[SETTING_SINGLE_CLASS] = self.singleClassMode.isChecked()
         settings[SETTING_PAINT_LABEL] = self.displayLabelOption.isChecked()
         settings[SETTING_DRAW_SQUARE] = self.drawSquaresOption.isChecked()
@@ -1599,6 +1654,7 @@ class MainWindow(QMainWindow, WindowMixin):
         shapes = crmlParseReader.get_shapes()
         self.loadLabels(shapes)
         self.canvas.verified = crmlParseReader.verified
+
     def loadCsvByFilename(self, csvPath):
         if self.filePath is None:
             return
@@ -1610,7 +1666,7 @@ class MainWindow(QMainWindow, WindowMixin):
         shapes = tCsvParseReader.getShapes()
         self.loadLabels(shapes)
         self.canvas.verified = tCsvParseReader.verified
-        
+
     def copyPreviousBoundingBoxes(self):
         currIndex = self.mImgList.index(self.filePath)
         if currIndex - 1 >= 0:
@@ -1644,6 +1700,22 @@ class MainWindow(QMainWindow, WindowMixin):
             shape.label = None
             self.canvas.current = shape
             self.canvas.finalise()
+
+    def preProcessing(self):
+        path = 'Boxes/data/'
+        print(listdir(path))
+        print('------------------------------------')
+        files = [f for f in listdir(path) if isfile(join(path, f, '0001.jpg'))]
+        for file in files:
+            if file == 'multi':
+                continue
+            image = cv2.imread(join(path, file, '0001.jpg'))
+            boxes, embs = self.box_recommender.detector.detectWithLandMark(image,
+                                                                           self.box_recommender.detector.detector)
+            self.embs.append(embs)
+        with open('test.npy', 'wb') as f:
+            for embs in self.embs:
+                np.save(f, np.array(embs))
 
 
 def inverted(color):

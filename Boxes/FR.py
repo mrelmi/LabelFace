@@ -1,9 +1,13 @@
+from os import listdir
+from os.path import isfile, join
+
 import face_detection
 from skimage import transform as trans
 import cv2
 import numpy as np
 import mxnet as mx
 from torch.cuda import is_available as is_cuda_available
+from sklearn.metrics.pairwise import cosine_similarity
 
 
 class ArcFace:
@@ -35,6 +39,24 @@ class ArcFace:
         return model
 
 
+def pad_batch(images):
+    max_w = max([img.shape[0] for img in images])
+    max_h = max([img.shape[1] for img in images])
+    for i in range(len(images)):
+        img = images[i]
+        w, h = img.shape[0], img.shape[1]
+        r = max_w / w
+        new_w, new_h = max_w, int(r * h)
+        if not (new_h <= max_h and new_w <= max_w):
+            r = max_h / h
+            new_w, new_h = int(r * w), max_h
+        img = cv2.resize(img, (new_h, new_w), interpolation=cv2.INTER_AREA)
+        res = np.zeros((max_w, max_h, 3), dtype=np.uint8)
+        res[:new_w, :new_h, :] = img
+        images[i] = res
+        return images
+
+
 def estimate_norm(lmk, image_size=112):
     assert lmk.shape == (5, 2)
     tform = trans.SimilarityTransform()
@@ -42,6 +64,11 @@ def estimate_norm(lmk, image_size=112):
     min_M = []
     min_index = []
     min_error = float('inf')
+    src = np.array(
+        [[38.2946, 51.6963], [73.5318, 51.5014], [56.0252, 71.7366],
+         [41.5493, 92.3655], [70.7299, 92.2041]],
+        dtype=np.float32)
+    src = np.expand_dims(src, axis=0)
     for i in np.arange(src.shape[0]):
         tform.estimate(lmk, src[i])
         M = tform.params[0:2, :]
@@ -66,10 +93,20 @@ class FaceDetector:
         if model_type == 'retina':
             self.detector = face_detection.build_detector(
                 "RetinaNetResNet50", confidence_threshold=0.5, nms_iou_threshold=0.3)
+
         self.points = []
         self.score = []
         self.model_type = model_type
         self.image = None
+
+        model_prefix = 'Boxes/model-r100-ii/model'
+        if is_cuda_available():
+            device = 'cuda'
+            gpuid = 0
+        else:
+            device = 'cpu'
+            gpuid = -1
+        self.arcface = ArcFace(gpu_id=gpuid, model_prefix=model_prefix, model_epoch=0)
 
     def detect(self, image):
         self.points = []
@@ -82,45 +119,103 @@ class FaceDetector:
             self.points.append((xmax, ymax))
             self.score.append(detections[i][4])
 
+    def detectWithLandMark(self, image, detector):
+        boxes, landmarks = face_detection.RetinaNetResNet50.batched_detect_with_landmarks(detector,
+                                                                                          np.expand_dims(image, 0))
 
-if __name__ == '__main__':
+        crops = []
+        for i in range(len(landmarks[0])):
+            crop = self.norm_crop(image, landmarks[0][0], )
+            crop = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+            crops.append(crop)
+        crops = np.array(crops)
+        embs = self.arcface.get_feature(crops)
+        return boxes, embs
 
-    detector = face_detection.build_detector("RetinaNetResNet50", confidence_threshold=0.5, nms_iou_threshold=0.3)
-    image = cv2.imread('2.jpg')
-    images = np.expand_dims(image, axis=0)
-    output = face_detection.RetinaNetResNet50.batched_detect_with_landmarks(detector, images)
+    def estimate_norm(self, lmk, image_size=112):
+        assert lmk.shape == (5, 2)
+        tform = trans.SimilarityTransform()
+        lmk_tran = np.insert(lmk, 2, values=np.ones(5), axis=1)
+        min_M = []
+        min_index = []
+        min_error = float('inf')
+        src = np.array(
+            [[38.2946, 51.6963], [73.5318, 51.5014], [56.0252, 71.7366],
+             [41.5493, 92.3655], [70.7299, 92.2041]],
+            dtype=np.float32)
+        src = np.expand_dims(src, axis=0)
+        for i in np.arange(src.shape[0]):
+            tform.estimate(lmk, src[i])
+            M = tform.params[0:2, :]
+            results = np.dot(M, lmk_tran.T)
+            results = results.T
+            error = np.sum(np.sqrt(np.sum((results - src[i]) ** 2, axis=1)))
+            if error < min_error:
+                min_error = error
+                min_M = M
+                min_index = i
+        return min_M, min_index
 
-    # for i in range(len(output[1][0])):
-    #     for j in range(5):
-    #
-    #         p1 = np.round(output[1][0][i][j][0])
-    #         p2 = np.round(output[1][0][i][j][1])
-    #         if j == 1:
-    #             cv2.line(image, (np.round(output[1][0][i][j - 1][0]), np.round(output[1][0][i][j - 1][1])), (p1, p2),
-    #                      (255, 255, 0))
-    #         cv2.circle(image, (p1, p2), 4, (255, 0, 0))
+    def norm_crop(self, img, landmark, image_size=112):
+        M, pose_index = self.estimate_norm(landmark, image_size)
+        warped = cv2.warpAffine(img, M, (image_size, image_size), borderValue=0.0)
+        return warped
 
-    model_prefix = 'model-r100-ii/model'
-    if is_cuda_available():
-        device = 'cuda'
-        gpuid = 0
-    else:
-        device = 'cpu'
-        gpuid = -1
-    arcface = ArcFace(gpu_id=gpuid, model_prefix=model_prefix, model_epoch=0)
-
-    src = np.array(
-        [[38.2946, 51.6963], [73.5318, 51.5014], [56.0252, 71.7366],
-         [41.5493, 92.3655], [70.7299, 92.2041]],
-        dtype=np.float32)
-    src = np.expand_dims(src, axis=0)
-    crops = []
-    for i in range(len(output[1][0])):
-        crop = norm_crop(image, output[1][0][i], )
-
-        cv2.imshow("crop", crop)
-        cv2.waitKey()
-        crop = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
-        crops.append(crop)
-    crops = np.array(crops)
-    embs = arcface.get_feature(crops)
+# if __name__ == '__main__':
+#
+#     detector = face_detection.build_detector("RetinaNetResNet50", confidence_threshold=0.5, nms_iou_threshold=0.3)
+#
+#     path = 'data/'
+#     images = []
+#     print(listdir(path))
+#     print('------------------------------------')
+#     files = [f for f in listdir(path) if isfile(join(path, f, '0001.jpg'))]
+#     for file in files:
+#         if file == 'multi':
+#             continue
+#         image = cv2.imread(join(path, file, '0001.jpg'))
+#         image = cv2.resize(image,(112,112))
+#         images.append(image)
+#     images = np.array(images)
+#
+#     boxes, lmarks = face_detection.RetinaNetResNet50.batched_detect_with_landmarks(detector, images)
+#
+#     # for i in range(len(output[1][0])):
+#     #     for j in range(5):
+#     #
+#     #         p1 = np.round(output[1][0][i][j][0])
+#     #         p2 = np.round(output[1][0][i][j][1])
+#     #         if j == 1:
+#     #             cv2.line(image, (np.round(output[1][0][i][j - 1][0]), np.round(output[1][0][i][j - 1][1])), (p1, p2),
+#     #                      (255, 255, 0))
+#     #         cv2.circle(image, (p1, p2), 4, (255, 0, 0))
+#
+#     model_prefix = 'model-r100-ii/model'
+#     if is_cuda_available():
+#         device = 'cuda'
+#         gpuid = 0
+#     else:
+#         device = 'cpu'
+#         gpuid = -1
+#     arcface = ArcFace(gpu_id=gpuid, model_prefix=model_prefix, model_epoch=0)
+#
+#     src = np.array(
+#         [[38.2946, 51.6963], [73.5318, 51.5014], [56.0252, 71.7366],
+#          [41.5493, 92.3655], [70.7299, 92.2041]],
+#         dtype=np.float32)
+#     src = np.expand_dims(src, axis=0)
+#     crops = []
+#     for i in range(len(lmarks)):
+#         for i in range(len(lmarks[0])):
+#             crop = norm_crop(image, lmarks[0][i], )
+#             crop = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+#             crops.append(crop)
+#         crops = np.array(crops)
+#     embs = arcface.get_feature(crops)
+#     with open('test.npy', 'wb') as f:
+#         for emb in embs:
+#             np.save(f, np.array(emb))
+#     new_embs = []
+#     with open('test.npy', 'rb') as f:
+#         for i in range(embs.shape[0]):
+#             new_embs.append(np.load(f))
