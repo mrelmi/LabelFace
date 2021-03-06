@@ -66,12 +66,12 @@ class CSVWriter:
             out_class_file = open(classesFile, 'w')
 
         with open(targetFile, mode='w', newline='') as f:
-            fieldnames = ['Id', 'xmin', 'ymin', 'xmax', 'ymax']
+            fieldnames = ['name', 'xmin', 'ymin', 'xmax', 'ymax','id']
             writer = csv.DictWriter(f, fieldnames)
             for box in self.boxlist:
                 classIndex, xmin, ymin, xmax, ymax = self.BndBox2CsvLine(box, classList)
                 # out_file.write("%d %.6f %.6f %.6f %.6f\n" % (classIndex, xcen, ycen, w, h))
-                writer.writerow({'Id': classIndex, 'xmin': xmin, 'ymin': ymin, 'xmax': xmax, 'ymax': ymax})
+                writer.writerow({'name': classIndex, 'xmin': xmin, 'ymin': ymin, 'xmax': xmax, 'ymax': ymax})
 
         for c in classList:
             out_class_file.write(c + '\n')
@@ -137,11 +137,11 @@ class CsvReader:
 
     def parseCsvFormat(self):
         with open(self.filepath, mode='r')as r:
-            readerField = ['Id', 'xmin', 'ymin', 'xmax', 'ymax']
+            readerField = ['name', 'xmin', 'ymin', 'xmax', 'ymax']
             reader = csv.DictReader(r, readerField)
             for raw in reader:
 
-                classIndex, xmin, ymin , xmax ,ymax= (int(raw['Id']), int(raw['xmin']), int(raw['ymin']), int(raw['xmax']), int(raw['ymax']))
+                classIndex, xmin, ymin , xmax ,ymax= (int(raw['name']), int(raw['xmin']), int(raw['ymin']), int(raw['xmax']), int(raw['ymax']))
                 label = self.classes[int(classIndex)]
 
                 self.addShape(label, xmin, ymin, xmax, ymax, False)

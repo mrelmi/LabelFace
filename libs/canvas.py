@@ -258,6 +258,7 @@ class Canvas(QWidget):
                 self.selectedShapeCopy = None
                 self.repaint()
         elif ev.button() == Qt.LeftButton and self.selectedShape:
+            self.selectedShape.drawingFlag = 2
             if self.selectedVertex():
                 self.overrideCursor(CURSOR_POINT)
             else:
@@ -272,6 +273,8 @@ class Canvas(QWidget):
 
     def endMove(self, copy=False):
         assert self.selectedShape and self.selectedShapeCopy
+        self.selectedShapeCopy.drawingFlag = 1
+        self.selectedShapeCopy.recommendedPoints = []
         shape = self.selectedShapeCopy
         #del shape.fill_color
         #del shape.line_color
@@ -295,7 +298,6 @@ class Canvas(QWidget):
     def handleDrawing(self, pos):
 
         if self.current and self.current.reachMaxPoints() is False:
-            print(111)
             initPos = self.current[0]
             minX = initPos.x()
             minY = initPos.y()
@@ -305,6 +307,7 @@ class Canvas(QWidget):
             self.current.addPoint(QPointF(maxX, minY))
             self.current.addPoint(targetPos)
             self.current.addPoint(QPointF(minX, maxY))
+            self.current.drawingFlag = 1
             self.finalise()
         elif not self.outOfPixmap(pos):
             self.current = Shape()
