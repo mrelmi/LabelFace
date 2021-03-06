@@ -55,8 +55,8 @@ class PictureDialog:
     def newFace(self, i, recomms):
         image = cv2.imread(recomms[i][0])
         image = cv2.resize(image, (self.image_size, self.image_size))
-        cv2.imwrite(str(i) + '.jpg', image)
-        url = str(i) + '.jpg'
+        cv2.imwrite('temp/'+str(i) + '.jpg', image)
+        url = 'temp/'+str(i) + '.jpg'
 
         self.buttons.append(QPushButton(self.w))
         self.buttons[i].setStyleSheet(BUTTON_CSS.replace('xxxxx.jpg', url))

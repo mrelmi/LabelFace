@@ -755,19 +755,22 @@ class MainWindow(QMainWindow, WindowMixin):
                         break
         image = cv2.imread(self.filePath)
         points = []
-        for shape in self.canvas.shapes:
-            if shape.selected:
-                points.append(round(shape.points[0].x()))
-                points.append(round(shape.points[0].y()))
-                points.append(round(shape.points[2].x()))
-                points.append(round(shape.points[2].y()))
+        points.append(round(self.canvas.selectedShape.points[0].x()))
+        points.append(round(self.canvas.selectedShape.points[0].y()))
+        points.append(round(self.canvas.selectedShape.points[2].x()))
+        points.append(round(self.canvas.selectedShape.points[2].y()))
         crop = image[points[1] - 10:points[3] + 10, points[0] - 10:points[2] + 10]
-
-        boxes, emb = self.box_recommender.detector.detectWithLandMark(crop,
+        emb = None
+        try :
+            boxes, emb = self.box_recommender.detector.detectWithLandMark(crop,
                                                                       self.box_recommender.detector.detector)
+        except:
+            print("recommender cant find boxes on this shape")
         indexes = []
         k = -1
         for i in range(len(self.embs)):
+            if emb is None :
+                break
             if (self.embs[i].ndim == 0):
                 picNumbers = self.embs[i]
                 k += 1
