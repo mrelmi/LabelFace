@@ -1,6 +1,6 @@
 from os import listdir
 from os.path import isfile, join
-
+import numpy as np
 import cv2
 from functools import partial
 import sys
@@ -43,7 +43,9 @@ class PictureDialog:
         indexes.sort(key=lambda tup: tup[0], reverse=True)
         for i in range(length):
             pics = [p for p in listdir(join(path, files[indexes[i][1]]))]
-            recomms.append((join(path, files[indexes[i][1]], pics[indexes[i][2]]), files[indexes[i][1]], indexes[i][0]))
+            recomms.append(
+                (join(path, files[indexes[i][1]], pics[indexes[i][2]]), files[indexes[i][1]], indexes[i][0],
+                 indexes[i][3]))
 
         for i in range(length):
             self.newFace(i, recomms)
@@ -52,11 +54,12 @@ class PictureDialog:
         self.w.show()
         self.w.exec_()
 
-    def newFace(self, i, recomms):
-        image = cv2.imread(recomms[i][0])
+    def newFace(self, i, recomms, ):
+        box = np.round(recomms[i][3][0][0]).astype(np.int16)
+        image = cv2.imread(recomms[i][0])[box[1]:box[3], box[0]:box[2]]
         image = cv2.resize(image, (self.image_size, self.image_size))
-        cv2.imwrite('temp/'+str(i) + '.jpg', image)
-        url = 'temp/'+str(i) + '.jpg'
+        cv2.imwrite('temp/' + str(i) + '.jpg', image)
+        url = 'temp/' + str(i) + '.jpg'
 
         self.buttons.append(QPushButton(self.w))
         self.buttons[i].setStyleSheet(BUTTON_CSS.replace('xxxxx.jpg', url))
@@ -64,10 +67,12 @@ class PictureDialog:
                                     self.image_size)
         self.buttons[i].clicked.connect(partial(self.p, recomms[i][1]))
 
-        self.labels.append(QLabel(parent=self.w, text='name :' +recomms[i][1]+'\nsimilarity : '+str(round(recomms[i][2],3))))
+        self.labels.append(
+            QLabel(parent=self.w, text='name :' + recomms[i][1] + '\nsimilarity : ' + str(round(recomms[i][2], 3))))
 
-        self.labels[i].setGeometry(i * self.image_size + 3 * self.image_pad, self.image_size + self.image_pad , self.image_size,
-                                   10*self.image_pad)
+        self.labels[i].setGeometry(i * self.image_size + 3 * self.image_pad, self.image_size + self.image_pad,
+                                   self.image_size,
+                                   10 * self.image_pad)
 
     def p(self, name):
         self.clickedItem = name

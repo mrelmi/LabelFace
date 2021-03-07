@@ -97,6 +97,7 @@ class MainWindow(QMainWindow, WindowMixin):
         self.box_recommender = BoxRecommender()
         self.saved_label_exist = False
         self.embs = []
+        self.boxes = []
         # Load setting in the main thread
         self.settings = Settings()
         self.settings.load()
@@ -753,6 +754,15 @@ class MainWindow(QMainWindow, WindowMixin):
                         self.embs.append(np.load(f))
                     except:
                         break
+
+        if not self.boxes:
+            with open('boxes.npy', 'rb') as f:
+                while True:
+                    try:
+                        self.boxes.append(np.load(f))
+                    except:
+                        break
+
         image = cv2.imread(self.filePath)
         points = []
         points.append(round(self.canvas.selectedShape.points[0].x()))
@@ -761,15 +771,15 @@ class MainWindow(QMainWindow, WindowMixin):
         points.append(round(self.canvas.selectedShape.points[2].y()))
         crop = image[points[1] - 10:points[3] + 10, points[0] - 10:points[2] + 10]
         emb = None
-        try :
+        try:
             boxes, emb = self.box_recommender.detector.detectWithLandMark(crop,
-                                                                      self.box_recommender.detector.detector)
+                                                                          self.box_recommender.detector.detector)
         except:
             print("recommender cant find boxes on this shape")
         indexes = []
         k = -1
         for i in range(len(self.embs)):
-            if emb is None :
+            if emb is None:
                 break
             if (self.embs[i].ndim == 0):
                 picNumbers = self.embs[i]
@@ -777,14 +787,13 @@ class MainWindow(QMainWindow, WindowMixin):
                 for j in range(1, picNumbers + 1):
                     a = cosine_similarity(emb, self.embs[i + j])
                     if a[0][0] > 0.1:
-                        indexes.append((a[0][0], k, j - 1))
+                        indexes.append((a[0][0], k, j - 1, self.boxes[i + j]))
                 i += picNumbers + 1
         path = 'Boxes/data/'
 
-
         pd = PictureDialog()
         pd.newId = None
-        pd.showWindow(indexes,path)
+        pd.showWindow(indexes, path)
         if pd.clickedItem is None:
             text = item.text()
             if pd.newId is not None:
@@ -1717,16 +1726,21 @@ class MainWindow(QMainWindow, WindowMixin):
                 continue
             pics = [p for p in listdir(join(path, file))]
             self.embs.append(len(pics))
+            self.boxes.append(len(pics))
+
             for pic in pics:
                 image = cv2.imread(join(path, file, pic))
                 boxes, embs = self.box_recommender.detector.detectWithLandMark(image,
                                                                                self.box_recommender.detector.detector)
 
                 self.embs.append(embs)
-
+                self.boxes.append(boxes)
         with open('test.npy', 'wb') as f:
             for embs in self.embs:
                 np.save(f, np.array(embs))
+        with open('boxes.npy', 'wb') as f:
+            for box in self.boxes:
+                np.save(f, np.array(box))
 
 
 def inverted(color):
