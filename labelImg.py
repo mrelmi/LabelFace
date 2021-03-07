@@ -1198,7 +1198,7 @@ class MainWindow(QMainWindow, WindowMixin):
             self.paintCanvas()
             self.addRecentFile(self.filePath)
             self.toggleActions(True)
-            self.showBoundingBoxFromAnnotationFile(filePath)
+            self.showBoundingBoxFromAnnotationFile(self.filePath)
 
             self.setWindowTitle(__appname__ + ' ' + filePath)
 
