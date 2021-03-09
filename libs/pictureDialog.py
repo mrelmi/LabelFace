@@ -50,13 +50,13 @@ class PictureDialog:
         for i in range(length):
             self.newFace(i, recomms)
         self.newInput(length)
-        self.w.setWindowTitle("choose")
+        self.w.setWindowTitle("similarity recommends")
         self.w.show()
         self.w.exec_()
 
     def newFace(self, i, recomms, ):
         box = np.round(recomms[i][3][0][0]).astype(np.int16)
-        image = cv2.imread(recomms[i][0])[box[1]:box[3], box[0]:box[2]]
+        image = cv2.imread(recomms[i][0])[box[1]-5:box[3]+5, box[0]-5:box[2]+5]
         image = cv2.resize(image, (self.image_size, self.image_size))
         cv2.imwrite('temp/' + str(i) + '.jpg', image)
         url = 'temp/' + str(i) + '.jpg'

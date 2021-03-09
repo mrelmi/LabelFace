@@ -5,6 +5,11 @@ resources.py
 .idea*
 labelImg.egg-info*
 
+*.npy
+Boxes/data/
+Boxes/model-r100-ii/
+
+
 *.pyc
 .*.swp
 

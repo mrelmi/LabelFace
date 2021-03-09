@@ -225,6 +225,9 @@ class MainWindow(QMainWindow, WindowMixin):
         quit = action(getStr('quit'), self.close,
                       'Ctrl+Q', 'quit', getStr('quitApp'))
 
+        getpreprocessPath = action(getStr('preProcessPath'), self.getPreProcessPath,
+                                   'Ctrl+Shift+p', 'preProcess', getStr('preProcessPath'))
+
         open = action(getStr('openFile'), self.openFile,
                       'Ctrl+O', 'open', getStr('openFileDetail'))
 
@@ -421,7 +424,8 @@ class MainWindow(QMainWindow, WindowMixin):
         self.displayLabelOption.triggered.connect(self.togglePaintLabelsOption)
 
         addActions(self.menus.file,
-                   (open, opendir, copyPrevBounding, changeSavedir, openAnnotation, self.menus.recentFiles, save,
+                   (open, opendir, getpreprocessPath, copyPrevBounding, changeSavedir, openAnnotation,
+                    self.menus.recentFiles, save,
                     save_format, saveAs, close, resetAll, deleteImg, quit))
         addActions(self.menus.help, (help, showInfo))
         addActions(self.menus.view, (
@@ -1475,6 +1479,25 @@ class MainWindow(QMainWindow, WindowMixin):
         if filename:
             self.loadFile(filename)
 
+    def getPreProcessPath(self, _value=False):
+        if not self.mayContinue():
+            return
+
+        if self.lastOpenDir and os.path.exists(self.lastOpenDir):
+            defaultOpenDirPath = self.lastOpenDir
+        else:
+            defaultOpenDirPath = os.path.dirname(self.filePath) if self.filePath else '.'
+
+        targetDirPath = ustr(QFileDialog.getExistingDirectory(self,
+                                                              '%s - choose dataset path' % __appname__,
+                                                              defaultOpenDirPath,
+                                                              QFileDialog.ShowDirsOnly | QFileDialog.DontResolveSymlinks))
+
+        self.preProcessPath = targetDirPath
+        print("pre processing started ...")
+        self.preProcessing()
+        print("pre processing is done .")
+
     def openFile(self, _value=False):
         if not self.mayContinue():
             return
@@ -1717,7 +1740,7 @@ class MainWindow(QMainWindow, WindowMixin):
             self.canvas.finalise()
 
     def preProcessing(self):
-        path = 'Boxes/data/'
+        path = self.preProcessPath
         print(listdir(path))
         print('------------------------------------')
         files = [f for f in listdir(path) if isfile(join(path, f, '0001.jpg'))]
