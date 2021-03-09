@@ -110,6 +110,7 @@ class MainWindow(QMainWindow, WindowMixin):
         # Save as Pascal voc xml
         self.defaultSaveDir = defaultSaveDir
         self.labelFileFormat = settings.get(SETTING_LABEL_FILE_FORMAT, LabelFileFormat.PASCAL_VOC)
+        self.preProcessPath = settings.get(SETTING_PREPROCESSING_PATH)
 
         # For loading all image under a directory
         self.mImgList = []
@@ -138,6 +139,24 @@ class MainWindow(QMainWindow, WindowMixin):
         listLayout = QVBoxLayout()
         listLayout.setContentsMargins(0, 0, 0, 0)
 
+        self.preProcessTextLine = QLineEdit()
+        self.preProcessButton = QPushButton()
+        self.preProcessButton.setStyleSheet('QPushButton {background-color: #A3C1DA; color: red;}')
+        self.preProcessButton.setText('Choose dataset path')
+        self.preProcessButton.clicked.connect(self.getPreProcessPath)
+        self.preProcessOkButton = QPushButton()
+        self.preProcessOkButton.setStyleSheet('QPushButton {background-color: #00F1F0; color: blue;}')
+        self.preProcessOkButton.setText('get embedings')
+        self.preProcessOkButton.clicked.connect(self.preProcessing)
+        self.preProcessTextLine.setText(self.preProcessPath)
+
+        preProcessLayout = QHBoxLayout()
+        preProcessLayout.addWidget(self.preProcessTextLine)
+        preProcessLayout.addWidget(self.preProcessButton)
+        preProcessLayout.addWidget(self.preProcessOkButton)
+        preProcessTextContainer = QWidget()
+        preProcessTextContainer.setLayout(preProcessLayout)
+
         # Create a widget for using default label
         self.useDefaultLabelCheckbox = QCheckBox(getStr('useDefaultLabel'))
         self.useDefaultLabelCheckbox.setChecked(False)
@@ -159,6 +178,7 @@ class MainWindow(QMainWindow, WindowMixin):
         listLayout.addWidget(self.editButton)
         listLayout.addWidget(self.diffcButton)
         listLayout.addWidget(useDefaultLabelContainer)
+        listLayout.addWidget(preProcessTextContainer)
 
         # Create and add combobox for showing unique labels in group
         self.comboBox = ComboBox(self)
@@ -506,8 +526,6 @@ class MainWindow(QMainWindow, WindowMixin):
         # Add chris
         Shape.difficult = self.difficult
 
-        # self.preProcessing()
-
         def xbool(x):
             if isinstance(x, QVariant):
                 return x.toBool()
@@ -793,11 +811,16 @@ class MainWindow(QMainWindow, WindowMixin):
                     if a[0][0] > 0.1:
                         indexes.append((a[0][0], k, j - 1, self.boxes[i + j]))
                 i += picNumbers + 1
-        path = 'Boxes/data/'
 
         pd = PictureDialog()
         pd.newId = None
-        pd.showWindow(indexes, path)
+
+        if self.preProcessPath is None:
+            self.errorMessage('None path', 'please choose a path ')
+        elif not os.path.isdir(self.preProcessPath):
+            self.errorMessage('wrong path', self.preProcessPath + "isn't directory")
+        else:
+            pd.showWindow(indexes, self.preProcessPath)
         if pd.clickedItem is None:
             text = item.text()
             if pd.newId is not None:
@@ -1314,6 +1337,8 @@ class MainWindow(QMainWindow, WindowMixin):
 
         if self.lastOpenDir and os.path.exists(self.lastOpenDir):
             settings[SETTING_LAST_OPEN_DIR] = self.lastOpenDir
+        if self.preProcessPath and os.path.isdir(self.preProcessPath):
+            settings[SETTING_PREPROCESSING_PATH] = self.preProcessPath
         else:
             settings[SETTING_LAST_OPEN_DIR] = ''
 
@@ -1483,8 +1508,8 @@ class MainWindow(QMainWindow, WindowMixin):
         if not self.mayContinue():
             return
 
-        if self.lastOpenDir and os.path.exists(self.lastOpenDir):
-            defaultOpenDirPath = self.lastOpenDir
+        if self.preProcessPath and os.path.exists(self.preProcessPath):
+            defaultOpenDirPath = self.preProcessPath
         else:
             defaultOpenDirPath = os.path.dirname(self.filePath) if self.filePath else '.'
 
@@ -1492,11 +1517,8 @@ class MainWindow(QMainWindow, WindowMixin):
                                                               '%s - choose dataset path' % __appname__,
                                                               defaultOpenDirPath,
                                                               QFileDialog.ShowDirsOnly | QFileDialog.DontResolveSymlinks))
-
+        self.preProcessTextLine.setText(targetDirPath)
         self.preProcessPath = targetDirPath
-        print("pre processing started ...")
-        self.preProcessing()
-        print("pre processing is done .")
 
     def openFile(self, _value=False):
         if not self.mayContinue():
@@ -1741,20 +1763,25 @@ class MainWindow(QMainWindow, WindowMixin):
 
     def preProcessing(self):
         path = self.preProcessPath
-        print(listdir(path))
-        print('------------------------------------')
-        files = [f for f in listdir(path) if isfile(join(path, f, '0001.jpg'))]
-        for file in files:
-            if file == 'multi':
-                continue
-            pics = [p for p in listdir(join(path, file))]
-            self.embs.append(len(pics))
-            self.boxes.append(len(pics))
+        if self.preProcessPath is None:
+            self.errorMessage('None path', 'please choose a path ')
+        elif not os.path.isdir(self.preProcessPath):
+            self.errorMessage('wrong path', self.preProcessPath + "isn't directory")
+        else:
+            print(listdir(path))
+            print('------------------------------------')
+            files = [f for f in listdir(path) if isfile(join(path, f, '0001.jpg'))]
+            for file in files:
+                if file == 'multi':
+                    continue
+                pics = [p for p in listdir(join(path, file))]
+                self.embs.append(len(pics))
+                self.boxes.append(len(pics))
 
-            for pic in pics:
-                image = cv2.imread(join(path, file, pic))
-                boxes, embs = self.box_recommender.detector.detectWithLandMark(image,
-                                                                               self.box_recommender.detector.detector)
+                for pic in pics:
+                    image = cv2.imread(join(path, file, pic))
+                    boxes, embs = self.box_recommender.detector.detectWithLandMark(image,
+                                                                                   self.box_recommender.detector.detector)
 
                 self.embs.append(embs)
                 self.boxes.append(boxes)
