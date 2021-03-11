@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 import argparse
 import codecs
+import csv
 import distutils.spawn
 import os.path
 import platform
@@ -14,6 +15,8 @@ import numpy as np
 from functools import partial
 from sklearn.metrics.pairwise import cosine_similarity
 
+from libs import oneCsvFile
+from libs.oneCsvFile import OneFileReader
 from libs.pictureDialog import PictureDialog
 
 try:
@@ -95,6 +98,8 @@ class MainWindow(QMainWindow, WindowMixin):
         self.saved_label_exist = False
         self.embs = []
         self.boxes = []
+        self.embsDict = {}
+
         # Load setting in the main thread
         self.settings = Settings()
         self.settings.load()
@@ -161,14 +166,19 @@ class MainWindow(QMainWindow, WindowMixin):
         self.preProcessButton.clicked.connect(self.getPreProcessPath)
         self.preProcessOkButton = QPushButton()
         self.preProcessOkButton.setStyleSheet('QPushButton {background-color: #00F1F0; color: blue;}')
-        self.preProcessOkButton.setText('get embedings')
-        self.preProcessOkButton.clicked.connect(self.preProcessing)
+        self.preProcessOkButton.setText('from dir')
+        self.preProcessOkButton.clicked.connect(self.preProcessingWithPath)
+        self.preProcessCsvButton = QPushButton()
+        self.preProcessCsvButton.setStyleSheet('QPushButton {background-color: #00F1F0; color: blue;}')
+        self.preProcessCsvButton.setText('from csv')
+        self.preProcessCsvButton.clicked.connect(self.preProcessingWithCsv)
         self.preProcessTextLine.setText(self.preProcessPath)
 
         preProcessLayout = QHBoxLayout()
         preProcessLayout.addWidget(self.preProcessTextLine)
         preProcessLayout.addWidget(self.preProcessButton)
         preProcessLayout.addWidget(self.preProcessOkButton)
+        preProcessLayout.addWidget(self.preProcessCsvButton)
         preProcessTextContainer = QWidget()
         preProcessTextContainer.setLayout(preProcessLayout)
 
@@ -796,21 +806,6 @@ class MainWindow(QMainWindow, WindowMixin):
         if not item:
             return
         # text = self.labelDialog.popUp(item.text())
-        if not self.embs:
-            with open('test.npy', 'rb') as f:
-                while True:
-                    try:
-                        self.embs.append(np.load(f))
-                    except:
-                        break
-
-        if not self.boxes:
-            with open('boxes.npy', 'rb') as f:
-                while True:
-                    try:
-                        self.boxes.append(np.load(f))
-                    except:
-                        break
 
         image = cv2.imread(self.filePath)
         # points = convertPointsToXY(self.canvas.selectedShape.points)
@@ -819,8 +814,8 @@ class MainWindow(QMainWindow, WindowMixin):
         points.append(round(self.canvas.selectedShape.points[0].y()))
         points.append(round(self.canvas.selectedShape.points[2].x()))
         points.append(round(self.canvas.selectedShape.points[2].y()))
-        crop = image[points[1] - 10:points[3] + 10, points[0] - 10:points[2] + 10]
-        emb = None
+        crop = image[points[1] - 5:points[3] + 5, points[0] - 5:points[2] + 5]
+        emb, boxes = None, None
         try:
             boxes, emb = self.box_recommender.detector.detectWithLandMark(crop,
                                                                           self.box_recommender.detector.detector)
@@ -828,17 +823,15 @@ class MainWindow(QMainWindow, WindowMixin):
             print("recommender cant find boxes on this shape")
         indexes = []
         k = -1
-        for i in range(len(self.embs)):
-            if emb is None:
-                break
-            if (self.embs[i].ndim == 0):
-                picNumbers = self.embs[i]
-                k += 1
-                for j in range(1, picNumbers + 1):
-                    a = cosine_similarity(emb, self.embs[i + j])
-                    if a[0][0] > 0.1:
-                        indexes.append((a[0][0], k, j - 1, self.boxes[i + j]))
-                i += picNumbers + 1
+        if emb is not None:
+            self.embsDict = np.load('embs.npy', allow_pickle=True).item()
+            for key in list(self.embsDict.keys()):
+                key_emb, key_box, key_name = self.embsDict[key]
+                a = cosine_similarity(emb, key_emb)
+                basename = os.path.basename(os.path.splitext(key)[0])
+                name = key.split(basename)[0].split(os.path.sep)[-2:-1][0]
+                if a[0][0] > 0.1:
+                    indexes.append((a[0][0], key_box, key, key_name))
 
         pd = PictureDialog()
         pd.newId = None
@@ -848,7 +841,7 @@ class MainWindow(QMainWindow, WindowMixin):
         elif not os.path.isdir(self.preProcessPath):
             self.errorMessage('wrong path', self.preProcessPath + "isn't directory")
         else:
-            pd.showWindow(indexes, self.preProcessPath)
+            pd.showWindow(indexes)
         if pd.clickedItem is None:
             text = item.text()
             if pd.newId is not None:
@@ -857,7 +850,7 @@ class MainWindow(QMainWindow, WindowMixin):
             text = pd.clickedItem
         if text is not None:
             item.setText(text)
-            item.setBackground(generateColorByText(text))
+            item.setBackground(QColor(0, 0, 0,200))
             self.setDirty()
             self.updateComboBox()
 
@@ -917,7 +910,7 @@ class MainWindow(QMainWindow, WindowMixin):
         item = HashableQListWidgetItem(shape.label)
         item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
         item.setCheckState(Qt.Checked)
-        item.setBackground(generateColorByText(shape.label))
+        item.setBackground(QColor(255,255,255,180))
         self.itemsToShapes[item] = shape
         self.shapesToItems[shape] = item
         self.labelList.addItem(item)
@@ -952,14 +945,14 @@ class MainWindow(QMainWindow, WindowMixin):
             s.append(shape)
 
             if line_color:
-                shape.line_color = QColor(*line_color)
+                shape.line_color = QColor(0,0,0,0)
             else:
-                shape.line_color = generateColorByText(label)
+                shape.line_color = QColor(255,255,255,180)
 
             if fill_color:
-                shape.fill_color = QColor(*fill_color)
+                shape.fill_color = QColor(0,0,0,0)
             else:
-                shape.fill_color = generateColorByText(label)
+                shape.fill_color = QColor(255,255,255,180)
 
             self.addLabel(shape)
         self.updateComboBox()
@@ -1058,7 +1051,7 @@ class MainWindow(QMainWindow, WindowMixin):
         label = item.text()
         if label != shape.label:
             shape.label = item.text()
-            shape.line_color = generateColorByText(shape.label)
+            shape.line_color = QColor(255,255,255,255)
             self.setDirty()
         else:  # User probably changed item visibility
             self.canvas.setShapeVisible(shape, item.checkState() == Qt.Checked)
@@ -1093,7 +1086,7 @@ class MainWindow(QMainWindow, WindowMixin):
         self.diffcButton.setChecked(False)
         if text is not None:
             self.prevLabelText = text
-            generate_color = generateColorByText(text)
+            generate_color = QColor(0,0,0,180)
             shape = self.canvas.setLastLabel(text, generate_color, generate_color)
             self.addLabel(shape)
             if self.beginner():  # Switch to edit mode.
@@ -1562,7 +1555,7 @@ class MainWindow(QMainWindow, WindowMixin):
         self.faceSetTextLine.setText(filename)
         self.csvFilePath = filename
 
-    def getPreProcessPath(self, _value=False):
+    def getPreProcessPath(self):
         if not self.mayContinue():
             return
 
@@ -1832,35 +1825,78 @@ class MainWindow(QMainWindow, WindowMixin):
             self.canvas.finalise()
 
     def preProcessing(self):
+        if os.path.isfile(self.preProcessPath):
+            self.preProcessingWithCsv()
+        if os.path.isdir(self.preProcessPath):
+            self.preProcessingWithPath()
+
+    def preProcessingWithPath(self):
         path = self.preProcessPath
+
         if self.preProcessPath is None:
             self.errorMessage('None path', 'please choose a path ')
         elif not os.path.isdir(self.preProcessPath):
             self.errorMessage('wrong path', self.preProcessPath + "isn't directory")
         else:
-            print(listdir(path))
-            print('------------------------------------')
-            files = [f for f in listdir(path) if isfile(join(path, f, '0001.jpg'))]
-            for file in files:
-                if file == 'multi':
+            if os.path.exists('embs.npy'):
+                self.embsDict = np.load('embs.npy', allow_pickle='TRUE').item()
+            imagesPath = self.scanAllImages(path)
+            for p in imagesPath:
+                basename = os.path.basename(os.path.splitext(p)[0])
+                filedir = p.split(basename)[0].split(os.path.sep)[-2:-1][0]
+                if filedir == 'multi':
                     continue
-                pics = [p for p in listdir(join(path, file))]
-                self.embs.append(len(pics))
-                self.boxes.append(len(pics))
-
-                for pic in pics:
-                    image = cv2.imread(join(path, file, pic))
+                image = cv2.imread(p)
+                try:
                     boxes, embs = self.box_recommender.detector.detectWithLandMark(image,
                                                                                    self.box_recommender.detector.detector)
+                except:
+                    continue
+                if len(embs) == 0:
+                    continue
 
-                self.embs.append(embs)
-                self.boxes.append(boxes)
-        with open('test.npy', 'wb') as f:
-            for embs in self.embs:
-                np.save(f, np.array(embs))
-        with open('boxes.npy', 'wb') as f:
-            for box in self.boxes:
-                np.save(f, np.array(box))
+                self.embsDict[p + '_0'] = [embs, boxes, filedir]
+            np.save('embs.npy', self.embsDict)
+
+    def preProcessingWithCsv(self):
+        csvPath = self.csvFilePath
+        if csvPath is None:
+            self.errorMessage('None path', 'please choose a path ')
+        elif csvPath.split('.')[-1] != 'csv':
+            self.errorMessage('wrong path', csvPath + "isn't csv")
+        else:
+            if os.path.exists('embs.npy'):
+                self.embsDict = np.load('embs.npy', allow_pickle='TRUE').item()
+            lines = []
+            with open(csvPath, mode='r') as r:
+                reader = csv.DictReader(r, oneCsvFile.FIELD_NAMES)
+                for row in reader:
+                    if int(row['getembs']):
+                        lines.append(row)
+                        continue
+                    row_path = row['path']
+
+                    image = cv2.imread(row_path)
+                    shape = [int(row['xmin']), int(row['ymin']), int(row['xmax']), int(row['ymax'])]
+
+                    img = image[shape[1] - 5:shape[3] + 5, shape[0] - 5:shape[2] + 5]
+                    try:
+                        boxes, embs = self.box_recommender.detector.detectWithLandMark(img,
+                                                                                       self.box_recommender.detector.detector)
+                        row['getembs'] = 1
+                        lines.append(row)
+                    except:
+                        lines.append(row)
+                        continue
+                    if len(embs) == 0:
+                        continue
+                    shape = [np.array([shape])]
+                    self.embsDict[row_path + '_' + str(row['index'])] = [embs, shape, row['name']]
+                with open(csvPath, mode='w', newline='') as f:
+                    writer = csv.DictWriter(f, oneCsvFile.FIELD_NAMES)
+                    writer.writerows(lines)
+
+                np.save('embs.npy', self.embsDict)
 
 
 def inverted(color):

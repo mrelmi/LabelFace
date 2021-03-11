@@ -5,7 +5,7 @@ import csv
 from libs.utils import convertPointsToXY
 
 TARGET_FILE = 'faceset.csv'
-FIELD_NAMES = ['path', 'xmin', 'ymin', 'xmax', 'ymax', 'name', 'drawingFlag']
+FIELD_NAMES = ['path', 'xmin', 'ymin', 'xmax', 'ymax', 'name', 'drawingFlag', 'getembs', 'index']
 
 
 class OneFileWriter:
@@ -24,6 +24,7 @@ class OneFileWriter:
         self.deleteExistentImagepath(imagepath, targetFile)
         with open(targetFile, mode='a', newline='') as f:
             writer = csv.DictWriter(f, self.fieldnames)
+            i = 0
             for shape in shapes:
                 p = []
                 p.append(round(shape.points[0].x()))
@@ -32,7 +33,8 @@ class OneFileWriter:
                 p.append(round(shape.points[2].y()))
                 writer.writerow(
                     {'path': imagepath, 'xmin': p[0], 'ymin': p[1], 'xmax': p[2], 'ymax': p[3], 'name': shape.label,
-                     'drawingFlag': shape.drawingFlag})
+                     'drawingFlag': shape.drawingFlag, 'getembs': 0, 'index': i})
+                i += 1
 
     def deleteExistentImagepath(self, imagePath, targetFile):
         lines = []
@@ -64,5 +66,5 @@ class OneFileReader:
             for row in reader:
                 if row['path'] == imagePath:
                     shapes.append([int(row['xmin']), int(row['ymin']), int(row['xmax']), int(row['ymax']), row['name'],
-                                  row['drawingFlag']])
+                                   row['drawingFlag']])
         return shapes
