@@ -258,7 +258,7 @@ class Canvas(QWidget):
                 self.selectedShapeCopy = None
                 self.repaint()
         elif ev.button() == Qt.LeftButton and self.selectedShape:
-            self.selectedShape.drawingFlag = 2
+            self.selectedShape.drawingFlag = 2 if self.selectedShape.drawingFlag != 1 else 1
             if self.selectedVertex():
                 self.overrideCursor(CURSOR_POINT)
             else:
@@ -315,6 +315,7 @@ class Canvas(QWidget):
             self.line.points = [pos, pos]
             self.setHiding()
             self.drawingPolygon.emit(True)
+            self.current.drawingFlag = 1
             self.update()
 
     def setHiding(self, enable=True):

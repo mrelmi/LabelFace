@@ -14,6 +14,7 @@ from libs.create_ml_io import CreateMLWriter
 from libs.create_ml_io import JSON_EXT
 from libs.csv_io import CSVWriter
 from libs.csv_io import CSV_EXT
+from libs.oneCsvFile import *
 
 from enum import Enum
 import os.path
@@ -21,10 +22,12 @@ import sys
 
 
 class LabelFileFormat(Enum):
-    PASCAL_VOC= 1
+    PASCAL_VOC = 1
     YOLO = 2
     CREATE_ML = 3
     CSV = 4
+    ONECSV = 5
+
 
 class LabelFileError(Exception):
     pass
@@ -41,7 +44,8 @@ class LabelFile(object):
         self.imageData = None
         self.verified = False
 
-    def saveCreateMLFormat(self, filename, shapes, imagePath, imageData, classList, lineColor=None, fillColor=None, databaseSrc=None):
+    def saveCreateMLFormat(self, filename, shapes, imagePath, imageData, classList, lineColor=None, fillColor=None,
+                           databaseSrc=None):
         imgFolderPath = os.path.dirname(imagePath)
         imgFolderName = os.path.split(imgFolderPath)[-1]
         imgFileName = os.path.basename(imagePath)
@@ -57,13 +61,12 @@ class LabelFile(object):
         writer.verified = self.verified
         writer.write()
 
-
     def savePascalVocFormat(self, filename, shapes, imagePath, imageData,
                             lineColor=None, fillColor=None, databaseSrc=None):
         imgFolderPath = os.path.dirname(imagePath)
         imgFolderName = os.path.split(imgFolderPath)[-1]
         imgFileName = os.path.basename(imagePath)
-        #imgFileNameWithoutExt = os.path.splitext(imgFileName)[0]
+        # imgFileNameWithoutExt = os.path.splitext(imgFileName)[0]
         # Read from file path because self.imageData might be empty if saving to
         # Pascal format
         if isinstance(imageData, QImage):
@@ -89,11 +92,11 @@ class LabelFile(object):
         return
 
     def saveYoloFormat(self, filename, shapes, imagePath, imageData, classList,
-                            lineColor=None, fillColor=None, databaseSrc=None):
+                       lineColor=None, fillColor=None, databaseSrc=None):
         imgFolderPath = os.path.dirname(imagePath)
         imgFolderName = os.path.split(imgFolderPath)[-1]
         imgFileName = os.path.basename(imagePath)
-        #imgFileNameWithoutExt = os.path.splitext(imgFileName)[0]
+        # imgFileNameWithoutExt = os.path.splitext(imgFileName)[0]
         # Read from file path because self.imageData might be empty if saving to
         # Pascal format
         if isinstance(imageData, QImage):
@@ -104,7 +107,7 @@ class LabelFile(object):
         imageShape = [image.height(), image.width(),
                       1 if image.isGrayscale() else 3]
         writer = YOLOWriter(imgFolderName, imgFileName,
-                                 imageShape, localImgPath=imagePath)
+                            imageShape, localImgPath=imagePath)
         writer.verified = self.verified
 
         for shape in shapes:
@@ -118,9 +121,8 @@ class LabelFile(object):
         writer.save(targetFile=filename, classList=classList)
         return
 
-
-    def saveCsvFormat(self,filename, shapes, imagePath, imageData, classList,
-                            lineColor=None, fillColor=None, databaseSrc=None):
+    def saveCsvFormat(self, filename, shapes, imagePath, imageData, classList,
+                      lineColor=None, fillColor=None, databaseSrc=None):
         imgFolderPath = os.path.dirname(imagePath)
         imgFolderName = os.path.split(imgFolderPath)[-1]
         imgFileName = os.path.basename(imagePath)
@@ -132,7 +134,7 @@ class LabelFile(object):
         imageShape = [image.height(), image.width(),
                       1 if image.isGrayscale() else 3]
         writer = CSVWriter(imgFolderName, imgFileName,
-                                 imageShape, localImgPath=imagePath)
+                           imageShape, localImgPath=imagePath)
         writer.verified = self.verified
 
         for shape in shapes:
@@ -145,7 +147,6 @@ class LabelFile(object):
 
         writer.save(targetFile=filename, classList=classList)
         return
-
 
     def toggleVerify(self):
         self.verified = not self.verified
@@ -208,3 +209,25 @@ class LabelFile(object):
             ymin = 1
 
         return (int(xmin), int(ymin), int(xmax), int(ymax))
+
+    def saveOneCsvFile(self, shapes, imagePath, imageData):
+
+        imgFolderPath = os.path.dirname(imagePath)
+        imgFolderName = os.path.split(imgFolderPath)[-1]
+        imgFileName = os.path.basename(imagePath)
+        if isinstance(imageData, QImage):
+            image = imageData
+        else:
+            image = QImage()
+            image.load(imagePath)
+        imageShape = [image.height(), image.width(),
+                      1 if image.isGrayscale() else 3]
+
+        writer = OneFileWriter(imgFolderName, imgFileName,
+                               imageShape, localImgPath=imagePath)
+
+        writer.save(shapes, imagePath)
+
+def getShapesFromCsvFaceSet(imagePath, csvFilePath=TARGET_FILE):
+    reader = OneFileReader()
+    return reader.loadShapes(imagePath, csvFilePath)

@@ -12,13 +12,9 @@ import cv2
 import numpy as np
 
 from functools import partial
-from collections import defaultdict
 from sklearn.metrics.pairwise import cosine_similarity
 
-from Boxes.FR import pad_batch, norm_crop
 from libs.pictureDialog import PictureDialog
-
-import PyQt5
 
 try:
     from PyQt5.QtGui import *
@@ -47,7 +43,7 @@ from libs.canvas import Canvas
 from libs.zoomWidget import ZoomWidget
 from libs.labelDialog import LabelDialog
 from libs.colorDialog import ColorDialog
-from libs.labelFile import LabelFile, LabelFileError, LabelFileFormat
+from libs.labelFile import LabelFile, LabelFileError, LabelFileFormat, getShapesFromCsvFaceSet
 from libs.toolBar import ToolBar
 from libs.pascal_voc_io import PascalVocReader
 from libs.pascal_voc_io import XML_EXT
@@ -93,6 +89,7 @@ class MainWindow(QMainWindow, WindowMixin):
         super(MainWindow, self).__init__()
         self.setWindowTitle(__appname__)
 
+        self.csvFilePath = 'faceset.csv'
         # Recommender
         self.box_recommender = BoxRecommender()
         self.saved_label_exist = False
@@ -139,6 +136,24 @@ class MainWindow(QMainWindow, WindowMixin):
         listLayout = QVBoxLayout()
         listLayout.setContentsMargins(0, 0, 0, 0)
 
+        # recomLayout = QHBoxLayout()
+        # recomLayout.setContentsMargins(0, 0, 0, 0)
+
+        # self.recomDialog = QDialog()
+        # self.recomDialog.setGeometry(10,10,10,10)
+        # recomLayout.addWidget(self.recomDialog)
+
+        self.faceSetTextLine = QLineEdit()
+        self.faceSetOkButton = QPushButton()
+        self.faceSetOkButton.setStyleSheet('QPushButton {background-color: #6FC1DA; color: green;}')
+        self.faceSetOkButton.setText('Choose csv face set')
+        self.faceSetOkButton.clicked.connect(self.getFacesetPath)
+        faceSetLayout = QVBoxLayout()
+        faceSetLayout.addWidget(self.faceSetTextLine)
+        faceSetLayout.addWidget(self.faceSetOkButton)
+        faceSetTextContainer = QWidget()
+        faceSetTextContainer.setLayout(faceSetLayout)
+
         self.preProcessTextLine = QLineEdit()
         self.preProcessButton = QPushButton()
         self.preProcessButton.setStyleSheet('QPushButton {background-color: #A3C1DA; color: red;}')
@@ -179,6 +194,7 @@ class MainWindow(QMainWindow, WindowMixin):
         listLayout.addWidget(self.diffcButton)
         listLayout.addWidget(useDefaultLabelContainer)
         listLayout.addWidget(preProcessTextContainer)
+        # listLayout.addWidget(faceSetTextContainer)
 
         # Create and add combobox for showing unique labels in group
         self.comboBox = ComboBox(self)
@@ -188,6 +204,8 @@ class MainWindow(QMainWindow, WindowMixin):
         self.labelList = QListWidget()
         labelListContainer = QWidget()
         labelListContainer.setLayout(listLayout)
+        recomListContainer = QWidget()
+        # recomListContainer.setLayout(recomLayout)
         self.labelList.itemActivated.connect(self.labelSelectionChanged)
         self.labelList.itemSelectionChanged.connect(self.labelSelectionChanged)
         self.labelList.itemDoubleClicked.connect(self.editLabel)
@@ -198,6 +216,9 @@ class MainWindow(QMainWindow, WindowMixin):
         self.dock = QDockWidget(getStr('boxLabelText'), self)
         self.dock.setObjectName(getStr('labels'))
         self.dock.setWidget(labelListContainer)
+
+        # self.recomWidget = QDockWidget(self)
+        # self.recomWidget.setWidget(recomListContainer)
 
         self.fileListWidget = QListWidget()
         self.fileListWidget.itemDoubleClicked.connect(self.fileitemDoubleClicked)
@@ -232,6 +253,7 @@ class MainWindow(QMainWindow, WindowMixin):
         self.canvas.selectionChanged.connect(self.shapeSelectionChanged)
         self.canvas.drawingPolygon.connect(self.toggleDrawingSensitive)
 
+        # self.addDockWidget(Qt.BottomDockWidgetArea, self.recomWidget)
         self.setCentralWidget(scroll)
         self.addDockWidget(Qt.RightDockWidgetArea, self.dock)
         self.addDockWidget(Qt.RightDockWidgetArea, self.filedock)
@@ -287,6 +309,8 @@ class MainWindow(QMainWindow, WindowMixin):
                 return ('&CreateML', 'format_createml')
             elif format == LabelFileFormat.CSV:
                 return ('&CSV', 'format_csv')
+            elif format == LabelFileFormat.ONECSV:
+                return ('&ONECSV', 'format_onecsv')
 
         save_format = action(getFormatMeta(self.labelFileFormat)[0],
                              self.change_format, 'Ctrl+',
@@ -591,6 +615,9 @@ class MainWindow(QMainWindow, WindowMixin):
             self.actions.save_format.setIcon(newIcon("format_csv"))
             self.labelFileFormat = LabelFileFormat.CSV
             LabelFile.suffix = CSV_EXT
+        elif save_format == FORMAT_ONECSV:
+            self.actions.save_format.setText(FORMAT_ONECSV)
+            self.labelFileFormat = LabelFileFormat.ONECSV
 
     def change_format(self):
         if self.labelFileFormat == LabelFileFormat.PASCAL_VOC:
@@ -786,6 +813,7 @@ class MainWindow(QMainWindow, WindowMixin):
                         break
 
         image = cv2.imread(self.filePath)
+        # points = convertPointsToXY(self.canvas.selectedShape.points)
         points = []
         points.append(round(self.canvas.selectedShape.points[0].x()))
         points.append(round(self.canvas.selectedShape.points[0].y()))
@@ -984,14 +1012,18 @@ class MainWindow(QMainWindow, WindowMixin):
             elif self.labelFileFormat == LabelFileFormat.CSV:
                 if annotationFilePath[-4:].lower() != ".csv":
                     annotationFilePath += CSV_EXT
-                self.labelFile.saveCsvFormat(annotationFilePath, shapes, self.filePath, self.imageData, self.labelHist,
-                                             self.lineColor.getRgb(), self.fillColor.getRgb())
+                # self.labelFile.saveCsvFormat(annotationFilePath, shapes, self.filePath, self.imageData, self.labelHist,
+                #                              self.lineColor.getRgb(), self.fillColor.getRgb())
 
+                self.labelFile.saveOneCsvFile(self.canvas.shapes, self.filePath, self.imageData)
+
+            elif self.labelFileFormat == LabelFileFormat.ONECSV:
+                self.labelFile.saveOneCsvFile(shapes, self.filePath, self.imageData)
 
             else:
                 self.labelFile.save(annotationFilePath, shapes, self.filePath, self.imageData,
                                     self.lineColor.getRgb(), self.fillColor.getRgb())
-            print('Image:{0} -> Annotation:{1}'.format(self.filePath, annotationFilePath))
+            # print('Image:{0} -> Annotation:{1}'.format(self.filePath, annotationFilePath))
             return True
         except LabelFileError as e:
             self.errorMessage(u'Error saving label data', u'<b>%s</b>' % e)
@@ -1049,6 +1081,8 @@ class MainWindow(QMainWindow, WindowMixin):
                 else:
                     text = self.labelDialog.popUp(text=self.prevLabelText)
                     self.lastLabel = text
+            elif self.canvas.shapes[-1].label is not None:
+                text = self.canvas.shapes[-1].label
             else:
                 text = 'unknown'
                 self.lastLabel = text
@@ -1236,8 +1270,11 @@ class MainWindow(QMainWindow, WindowMixin):
 
             self.canvas.setFocus(True)
             if self.recommenderMode.isChecked() and not self.saved_label_exist:
-                self.box_recommender.detect(image_path=self.filePath)
-                self.drawPoints(self.box_recommender.points)
+                try:
+                    self.box_recommender.detect(image_path=self.filePath)
+                    self.drawPoints(self.box_recommender.points)
+                except:
+                    print("there isn't any recommended box or there is something wrong with the image")
             self.saved_label_exist = False
             return True
         return False
@@ -1253,7 +1290,10 @@ class MainWindow(QMainWindow, WindowMixin):
             """Annotation file priority:
             PascalXML > YOLO
             """
-            if os.path.isfile(xmlPath):
+            if os.path.isfile(self.csvFilePath):
+                self.saved_label_exist = True
+                self.loadshapesFromCsvFaceset()
+            elif os.path.isfile(xmlPath):
                 self.loadPascalXMLByFilename(xmlPath)
                 self.saved_label_exist = True
             elif os.path.isfile(txtPath):
@@ -1265,11 +1305,15 @@ class MainWindow(QMainWindow, WindowMixin):
             elif os.path.isfile(csvPath):
                 self.loadCsvByFilename(csvPath)
                 self.saved_label_exist = True
+
         else:
             xmlPath = os.path.splitext(filePath)[0] + XML_EXT
             txtPath = os.path.splitext(filePath)[0] + TXT_EXT
             csvPath = os.path.splitext(filePath)[0] + CSV_EXT
-            if os.path.isfile(xmlPath):
+            if os.path.isfile(self.csvFilePath):
+                self.saved_label_exist = True
+                self.loadshapesFromCsvFaceset()
+            elif os.path.isfile(xmlPath):
                 self.loadPascalXMLByFilename(xmlPath)
                 self.saved_label_exist = True
             elif os.path.isfile(txtPath):
@@ -1337,10 +1381,12 @@ class MainWindow(QMainWindow, WindowMixin):
 
         if self.lastOpenDir and os.path.exists(self.lastOpenDir):
             settings[SETTING_LAST_OPEN_DIR] = self.lastOpenDir
-        if self.preProcessPath and os.path.isdir(self.preProcessPath):
-            settings[SETTING_PREPROCESSING_PATH] = self.preProcessPath
         else:
             settings[SETTING_LAST_OPEN_DIR] = ''
+        if self.preProcessPath and os.path.isdir(self.preProcessPath):
+            settings[SETTING_PREPROCESSING_PATH] = self.preProcessPath
+        if self.csvFilePath and os.path.isfile(self.csvFilePath):
+            settings[SETTING_CSVDATABASE] = self.csvFilePath
 
         settings[SETTING_AUTO_SAVE] = self.autoSaving.isChecked()
         settings[SETTING_RECOMMENDER] = self.recommenderMode.isChecked()
@@ -1503,6 +1549,18 @@ class MainWindow(QMainWindow, WindowMixin):
 
         if filename:
             self.loadFile(filename)
+
+    def getFacesetPath(self, ):
+        if not self.mayContinue():
+            return
+        path = os.path.dirname(ustr(self.filePath)) if self.filePath else '.'
+
+        filename = QFileDialog.getOpenFileName(self, '%s - Choose your csv DB' % __appname__, path)
+        if filename:
+            if isinstance(filename, (tuple, list)):
+                filename = filename[0]
+        self.faceSetTextLine.setText(filename)
+        self.csvFilePath = filename
 
     def getPreProcessPath(self, _value=False):
         if not self.mayContinue():
@@ -1713,6 +1771,17 @@ class MainWindow(QMainWindow, WindowMixin):
         self.loadLabels(shapes)
         self.canvas.verified = crmlParseReader.verified
 
+    def loadshapesFromCsvFaceset(self):
+        if self.filePath is None:
+            return
+
+        shapes = getShapesFromCsvFaceSet(self.filePath, self.csvFilePath)
+        if not shapes:
+            self.saved_label_exist = False
+            return
+        for shape in shapes:
+            self.drawPoints([(shape[0], shape[1]), (shape[2], shape[3])], shape[4], shape[5])
+
     def loadCsvByFilename(self, csvPath):
         if self.filePath is None:
             return
@@ -1739,7 +1808,7 @@ class MainWindow(QMainWindow, WindowMixin):
     def toogleDrawSquare(self):
         self.canvas.setDrawingShapeToSquare(self.drawSquaresOption.isChecked())
 
-    def drawPoints(self, points):
+    def drawPoints(self, points, label=None, drawingFlag=0):
 
         for i in range(len(points) // 2):
             p1x, p1y = points[2 * i]
@@ -1755,9 +1824,10 @@ class MainWindow(QMainWindow, WindowMixin):
             shape.addPoint(p3)
             shape.addPoint(p4)
             shape.fill = True
-            shape.label = None
-            shape.recommendedPoints = [p1, p2, p3, p4]
-            shape.drawingFlag = 0
+            shape.label = label
+            if drawingFlag == 0:
+                shape.recommendedPoints = [p1, p2, p3, p4]
+            shape.drawingFlag = drawingFlag
             self.canvas.current = shape
             self.canvas.finalise()
 
