@@ -10,7 +10,7 @@ Boxes/data/
 Boxes/model-r100-ii/
 
 faceset.csv
-temp/*
+temp/*.jpg
 
 *.pyc
 .*.swp
