@@ -276,3 +276,17 @@ Stargazers over time
 
 .. image:: https://starchart.cc/tzutalin/labelImg.svg
 
+
+How to use recommender mode
+~~~~~~~~~~~~~~~~~~~~
+
+First of all download model from  `here <https://www.dropbox.com/s/tj96fsm6t6rq8ye/model-r100-arcface-ms1m-refine-v2.zip?dl=0>` and put the model-r100-ii directory on './boxes/'
+create a new folder with name "temp" on the root (next to labelimg.py)
+every thing is ready, after run labelimg :
+you can click on "choose your dataset path "
+choose any directory  and a emb.npy will be made from all pictures on that directory, that have embedings and boxes of image dictionary with the file path id .
+you can how many times use this button to add directory and increase emb.npy .
+load image , edit it and press save button (check under button , that should be on csv mode ,it changes with click )
+increase faceset.csv with saving more images
+when ever you want click on "from csv" and new embedings from images that saved on faceset.csv will be added to emb.npy file (just that image had been edited)
+if you edit some image and save it again , it will be updated on faceset.csv 
