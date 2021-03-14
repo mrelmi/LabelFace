@@ -9,6 +9,8 @@ labelImg.egg-info*
 Boxes/data/
 Boxes/model-r100-ii/
 
+faceset.csv
+temp/*
 
 *.pyc
 .*.swp
