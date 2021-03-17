@@ -16,7 +16,10 @@ class BoxRecommender:
         if image is not None:
             self.image = image
         else:
-            image = cv2.imread(image_path)[:, :, ::-1]
+            try:
+                image = cv2.imread(image_path)[:, :, ::-1]
+            except:
+                image =cv2.imread(image_path)
             self.image = image
         self.detector.detect(self.image)
         self.points = self.detector.points

@@ -13,11 +13,13 @@ import cv2
 import numpy as np
 
 from functools import partial
+
+import piexif
 from sklearn.metrics.pairwise import cosine_similarity
 
 from libs import oneCsvFile
 from libs.oneCsvFile import OneFileReader
-from libs.pictureDialog import PictureDialog
+from libs.pictureDialog import PictureDialog, BUTTON_CSS, IMAGE_SIZE, IMAGE_PAD
 
 try:
     from PyQt5.QtGui import *
@@ -141,12 +143,25 @@ class MainWindow(QMainWindow, WindowMixin):
         listLayout = QVBoxLayout()
         listLayout.setContentsMargins(0, 0, 0, 0)
 
-        # recomLayout = QHBoxLayout()
-        # recomLayout.setContentsMargins(0, 0, 0, 0)
+        self.recomLayout = QHBoxLayout()
+        self.recomLayout.setContentsMargins(0, 0, 0, 0)
 
-        # self.recomDialog = QDialog()
-        # self.recomDialog.setGeometry(10,10,10,10)
-        # recomLayout.addWidget(self.recomDialog)
+        self.w = QDialog()
+        self.buttons = []
+        self.labels = []
+        self.clickedItem = None
+        self.image_size = IMAGE_SIZE
+        self.image_pad = IMAGE_PAD
+        self.newId = None
+        self.recomImages = []
+
+
+        # self.recomList.addItem(item1)
+        # self.recomList.addItem(item2)
+
+        self.recomLayout.addWidget(self.w)
+        recomContainer = QWidget()
+        recomContainer.setLayout(self.recomLayout)
 
         self.faceSetTextLine = QLineEdit()
         self.faceSetOkButton = QPushButton()
@@ -163,14 +178,17 @@ class MainWindow(QMainWindow, WindowMixin):
         self.preProcessButton = QPushButton()
         self.preProcessButton.setStyleSheet('QPushButton {background-color: #A3C1DA; color: red;}')
         self.preProcessButton.setText('Choose dataset path')
+        self.preProcessButton.setToolTip("choose your dataset's directory")
         self.preProcessButton.clicked.connect(self.getPreProcessPath)
         self.preProcessOkButton = QPushButton()
         self.preProcessOkButton.setStyleSheet('QPushButton {background-color: #00F1F0; color: blue;}')
         self.preProcessOkButton.setText('from dir')
+        self.preProcessOkButton.setToolTip("Get embedings from directory images")
         self.preProcessOkButton.clicked.connect(self.preProcessingWithPath)
         self.preProcessCsvButton = QPushButton()
         self.preProcessCsvButton.setStyleSheet('QPushButton {background-color: #00F1F0; color: blue;}')
         self.preProcessCsvButton.setText('from csv')
+        self.preProcessCsvButton.setToolTip("Get embedings from csv images")
         self.preProcessCsvButton.clicked.connect(self.preProcessingWithCsv)
         self.preProcessTextLine.setText(self.preProcessPath)
 
@@ -214,7 +232,6 @@ class MainWindow(QMainWindow, WindowMixin):
         self.labelList = QListWidget()
         labelListContainer = QWidget()
         labelListContainer.setLayout(listLayout)
-        recomListContainer = QWidget()
         # recomListContainer.setLayout(recomLayout)
         self.labelList.itemActivated.connect(self.labelSelectionChanged)
         self.labelList.itemSelectionChanged.connect(self.labelSelectionChanged)
@@ -227,8 +244,9 @@ class MainWindow(QMainWindow, WindowMixin):
         self.dock.setObjectName(getStr('labels'))
         self.dock.setWidget(labelListContainer)
 
-        # self.recomWidget = QDockWidget(self)
-        # self.recomWidget.setWidget(recomListContainer)
+        self.recomDock = QDockWidget("Recommends", self)
+        self.recomDock.setObjectName("recomms")
+        self.recomDock.setWidget(recomContainer)
 
         self.fileListWidget = QListWidget()
         self.fileListWidget.itemDoubleClicked.connect(self.fileitemDoubleClicked)
@@ -263,11 +281,12 @@ class MainWindow(QMainWindow, WindowMixin):
         self.canvas.selectionChanged.connect(self.shapeSelectionChanged)
         self.canvas.drawingPolygon.connect(self.toggleDrawingSensitive)
 
-        # self.addDockWidget(Qt.BottomDockWidgetArea, self.recomWidget)
         self.setCentralWidget(scroll)
         self.addDockWidget(Qt.RightDockWidgetArea, self.dock)
         self.addDockWidget(Qt.RightDockWidgetArea, self.filedock)
         self.filedock.setFeatures(QDockWidget.DockWidgetFloatable)
+        self.addDockWidget(Qt.BottomDockWidgetArea, self.recomDock)
+
 
         self.dockFeatures = QDockWidget.DockWidgetClosable | QDockWidget.DockWidgetFloatable
         self.dock.setFeatures(self.dock.features() ^ self.dockFeatures)
@@ -800,59 +819,7 @@ class MainWindow(QMainWindow, WindowMixin):
         self.menus.labelList.exec_(self.labelList.mapToGlobal(point))
 
     def editLabel(self):
-        if not self.canvas.editing():
-            return
-        item = self.currentItem()
-        if not item:
-            return
-        # text = self.labelDialog.popUp(item.text())
-
-        image = cv2.imread(self.filePath)
-        # points = convertPointsToXY(self.canvas.selectedShape.points)
-        points = []
-        points.append(round(self.canvas.selectedShape.points[0].x()))
-        points.append(round(self.canvas.selectedShape.points[0].y()))
-        points.append(round(self.canvas.selectedShape.points[2].x()))
-        points.append(round(self.canvas.selectedShape.points[2].y()))
-        crop = image[points[1] - 5:points[3] + 5, points[0] - 5:points[2] + 5]
-        emb, boxes = None, None
-        try:
-            boxes, emb = self.box_recommender.detector.detectWithLandMark(crop,
-                                                                          self.box_recommender.detector.detector)
-        except:
-            print("recommender cant find boxes on this shape")
-        indexes = []
-        k = -1
-        if emb is not None:
-            self.embsDict = np.load('embs.npy', allow_pickle=True).item()
-            for key in list(self.embsDict.keys()):
-                key_emb, key_box, key_name = self.embsDict[key]
-                a = cosine_similarity(emb, key_emb)
-                basename = os.path.basename(os.path.splitext(key)[0])
-                name = key.split(basename)[0].split(os.path.sep)[-2:-1][0]
-                if a[0][0] > 0.1:
-                    indexes.append((a[0][0], key_box, key, key_name))
-
-        pd = PictureDialog()
-        pd.newId = None
-
-        if self.preProcessPath is None:
-            self.errorMessage('None path', 'please choose a path ')
-        elif not os.path.isdir(self.preProcessPath):
-            self.errorMessage('wrong path', self.preProcessPath + "isn't directory")
-        else:
-            pd.showWindow(indexes)
-        if pd.clickedItem is None:
-            text = item.text()
-            if pd.newId is not None:
-                text = pd.newId[0]
-        else:
-            text = pd.clickedItem
-        if text is not None:
-            item.setText(text)
-            item.setBackground(QColor(0, 0, 0,200))
-            self.setDirty()
-            self.updateComboBox()
+        self.labelSelectionChanged()
 
     # Tzutalin 20160906 : Add file list and dock to move faster
     def fileitemDoubleClicked(self, item=None):
@@ -910,7 +877,7 @@ class MainWindow(QMainWindow, WindowMixin):
         item = HashableQListWidgetItem(shape.label)
         item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
         item.setCheckState(Qt.Checked)
-        item.setBackground(QColor(255,255,255,180))
+        item.setBackground(QColor(255, 255, 255, 180))
         self.itemsToShapes[item] = shape
         self.shapesToItems[shape] = item
         self.labelList.addItem(item)
@@ -945,14 +912,14 @@ class MainWindow(QMainWindow, WindowMixin):
             s.append(shape)
 
             if line_color:
-                shape.line_color = QColor(0,0,0,0)
+                shape.line_color = QColor(0, 0, 0, 0)
             else:
-                shape.line_color = QColor(255,255,255,180)
+                shape.line_color = QColor(255, 255, 255, 180)
 
             if fill_color:
-                shape.fill_color = QColor(0,0,0,0)
+                shape.fill_color = QColor(0, 0, 0, 0)
             else:
-                shape.fill_color = QColor(255,255,255,180)
+                shape.fill_color = QColor(255, 255, 255, 180)
 
             self.addLabel(shape)
         self.updateComboBox()
@@ -1038,6 +1005,70 @@ class MainWindow(QMainWindow, WindowMixin):
                 self.labelList.item(i).setCheckState(2)
 
     def labelSelectionChanged(self):
+        self.w.close()
+        if not self.canvas.editing():
+            return
+        item = self.currentItem()
+        if not item:
+            return
+        # text = self.labelDialog.popUp(item.text())
+        if self.canvas.selectedShape is None :
+            return
+        image = cv2.imread(self.filePath)
+        # points = convertPointsToXY(self.canvas.selectedShape.points)
+        points = []
+        points.append(round(self.canvas.selectedShape.points[0].x()))
+        points.append(round(self.canvas.selectedShape.points[0].y()))
+        points.append(round(self.canvas.selectedShape.points[2].x()))
+        points.append(round(self.canvas.selectedShape.points[2].y()))
+        crop = image[points[1] - 5:points[3] + 5, points[0] - 5:points[2] + 5]
+        emb, boxes = None, None
+        try:
+            boxes, emb = self.box_recommender.detector.detectWithLandMark(crop,
+                                                                          self.box_recommender.detector.detector)
+        except:
+            print("recommender cant find boxes on this shape")
+        indexes = []
+        k = -1
+        if emb is not None:
+            self.embsDict = np.load('embs.npy', allow_pickle=True).item()
+            for key in list(self.embsDict.keys()):
+                key_emb, key_box, key_name = self.embsDict[key]
+                a = cosine_similarity(emb, key_emb)
+                basename = os.path.basename(os.path.splitext(key)[0])
+                name = key.split(basename)[0].split(os.path.sep)[-2:-1][0]
+                if a[0][0] > 0.1:
+                    indexes.append((a[0][0], key_box, key, key_name))
+
+
+        self.w = QDialog()
+        self.buttons = []
+        self.labels = []
+        self.clickedItem = None
+        self.image_size = IMAGE_SIZE
+        self.image_pad = IMAGE_PAD
+        self.newId = None
+        self.recomLayout.addWidget(self.w)
+        if self.preProcessPath is None:
+            self.errorMessage('None path', 'please choose a path ')
+        elif not os.path.isdir(self.preProcessPath):
+            self.errorMessage('wrong path', self.preProcessPath + "isn't directory")
+        else:
+            self.showWindow(indexes)
+
+
+
+        if self.clickedItem is None:
+            text = item.text()
+            if self.newId is not None:
+                text = self.newId[0]
+        else:
+            text = self.clickedItem
+        if text is not None:
+            item.setText(text)
+            item.setBackground(QColor(0, 0, 0, 200))
+            self.setDirty()
+            self.updateComboBox()
         item = self.currentItem()
         if item and self.canvas.editing():
             self._noSelectionSlot = True
@@ -1051,7 +1082,7 @@ class MainWindow(QMainWindow, WindowMixin):
         label = item.text()
         if label != shape.label:
             shape.label = item.text()
-            shape.line_color = QColor(255,255,255,255)
+            shape.line_color = QColor(255, 255, 255, 255)
             self.setDirty()
         else:  # User probably changed item visibility
             self.canvas.setShapeVisible(shape, item.checkState() == Qt.Checked)
@@ -1086,7 +1117,7 @@ class MainWindow(QMainWindow, WindowMixin):
         self.diffcButton.setChecked(False)
         if text is not None:
             self.prevLabelText = text
-            generate_color = QColor(0,0,0,180)
+            generate_color = QColor(0, 0, 0, 180)
             shape = self.canvas.setLastLabel(text, generate_color, generate_color)
             self.addLabel(shape)
             if self.beginner():  # Switch to edit mode.
@@ -1187,6 +1218,7 @@ class MainWindow(QMainWindow, WindowMixin):
 
     def loadFile(self, filePath=None):
         """Load the specified file, or the last opened file if None."""
+        self.w.close()
         self.resetState()
         self.canvas.setEnabled(False)
         if filePath is None:
@@ -1824,12 +1856,6 @@ class MainWindow(QMainWindow, WindowMixin):
             self.canvas.current = shape
             self.canvas.finalise()
 
-    def preProcessing(self):
-        if os.path.isfile(self.preProcessPath):
-            self.preProcessingWithCsv()
-        if os.path.isdir(self.preProcessPath):
-            self.preProcessingWithPath()
-
     def preProcessingWithPath(self):
         path = self.preProcessPath
 
@@ -1897,6 +1923,90 @@ class MainWindow(QMainWindow, WindowMixin):
                     writer.writerows(lines)
 
                 np.save('embs.npy', self.embsDict)
+            self.status("Getting embedings is done")
+
+    def showWindow(self, indexes):
+        length = min(8, len(indexes))
+
+        indexes.sort(key=lambda tup: tup[0], reverse=True)
+        indexes = indexes[:length]
+
+        for i in range(length):
+            self.newFace(i, indexes)
+        self.newInput(length)
+        self.w.setWindowTitle("similarity recommends")
+        self.w.show()
+
+    def newFace(self, i, recomms, ):
+        box = np.round(recomms[i][1][0][0]).astype(np.int16)
+        imgPath = (recomms[i][2][:-2]) if recomms[i][2][-2] == '_' else (recomms[i][2][:-3])
+        image = cv2.imread(imgPath)[box[1] - 5:box[3] + 5, box[0] - 5:box[2] + 5]
+        image = cv2.resize(image, (self.image_size, self.image_size))
+        cv2.imwrite('temp/' + str(i) + '.jpg', image)
+        url = 'temp/' + str(i) + '.jpg'
+
+        self.buttons.append(QPushButton(self.w))
+        self.buttons[i].setStyleSheet(BUTTON_CSS.replace('xxxxx.jpg', url))
+        self.buttons[i].setGeometry(i * self.image_size + self.image_pad, self.image_pad, self.image_size,
+                                    self.image_size)
+        self.buttons[i].clicked.connect(partial(self.p, recomms[i][3]))
+
+        self.labels.append(
+            QLabel(parent=self.w, text='name :' + recomms[i][3] + '\nsimilarity : ' + str(round(recomms[i][0], 3))))
+
+        self.labels[i].setGeometry(i * self.image_size + 3 * self.image_pad, self.image_size ,
+                                   self.image_size,
+                                   10 * self.image_pad)
+
+    def p(self, name):
+        self.clickedItem = name
+        self.canvas.selectedShape.label = name
+        item = self.currentItem()
+
+        if self.clickedItem is None:
+            text = item.text()
+            if self.newId is not None:
+                text = self.newId[0]
+        else:
+            text = self.clickedItem
+        if text is not None:
+            item.setText(text)
+            item.setBackground(QColor(0, 0, 0, 200))
+            self.setDirty()
+            self.updateComboBox()
+
+        self.w.close()
+
+    def getNewOne(self):
+        name = QInputDialog(self.w)
+        self.newId = name.getText(self.w, 'title', 'Enter new Name :')
+        item = self.currentItem()
+
+        if self.clickedItem is None:
+            text = item.text()
+            if self.newId is not None:
+                text = self.newId[0]
+        else:
+            text = self.clickedItem
+        if text is not None:
+            item.setText(text)
+            item.setBackground(QColor(0, 0, 0, 200))
+            self.setDirty()
+            self.updateComboBox()
+        self.w.close()
+    def newInput(self, i):
+        self.buttons.append(QPushButton(self.w))
+        self.buttons[i].setText('new')
+        self.buttons[i].setStyleSheet("background-color: \
+                               rgba(255,255,0,255); \
+                               color: rgba(0,0,0,255); \
+                               border-style: solid; \
+                               border-radius: 7px; border-width: 5px; \
+                               border-color: rgba(0,0,0,255);")
+        self.buttons[i].setGeometry(i * self.image_size + 3 * self.image_pad // 2,
+                                    self.image_size // 2 + self.image_pad // 2,
+                                    self.image_size - 6 * self.image_pad, 2 * self.image_pad)
+        self.buttons[i].clicked.connect(self.getNewOne)
 
 
 def inverted(color):
