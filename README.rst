@@ -282,6 +282,8 @@ How to use recommender mode
 
 First of all download model from  `here <https://www.dropbox.com/s/tj96fsm6t6rq8ye/model-r100-arcface-ms1m-refine-v2.zip?dl=0>` and put the model-r100-ii directory on './boxes/'
 
+install face-detection with "pip install face-detection"
+
 after run the app :
 
 you can click on "from dir" or "from csv"
