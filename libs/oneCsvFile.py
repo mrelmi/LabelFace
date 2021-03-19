@@ -22,7 +22,7 @@ class OneFileWriter:
 
     def save(self, shapes, imagepath, targetFile=TARGET_FILE):
         self.deleteExistentImagepath(imagepath, targetFile)
-        with open(targetFile, mode='a', newline='') as f:
+        with open(targetFile, mode='a', newline='',encoding="utf-8") as f:
             writer = csv.DictWriter(f, self.fieldnames)
             i = 0
             for shape in shapes:
@@ -40,13 +40,13 @@ class OneFileWriter:
         lines = []
         if not os.path.exists(targetFile):
             return
-        with open(targetFile, mode='r') as r:
+        with open(targetFile, mode='r',encoding='utf-8') as r:
             reader = csv.DictReader(r, self.fieldnames)
             for row in reader:
                 if row['path'] != imagePath:
                     lines.append(row)
         os.remove(targetFile)
-        with open(targetFile, mode='a', newline='') as f:
+        with open(targetFile, mode='a', newline='',encoding='utf-8') as f:
             writer = csv.DictWriter(f, self.fieldnames)
             writer.writerows(lines)
 
@@ -61,7 +61,7 @@ class OneFileReader:
         shapes = []
         if not os.path.exists(targetFile):
             return
-        with open(targetFile, mode='r') as r:
+        with open(targetFile, mode='r',encoding='utf-8') as r:
             reader = csv.DictReader(r, self.fieldnames)
             for row in reader:
                 if row['path'] == imagePath:

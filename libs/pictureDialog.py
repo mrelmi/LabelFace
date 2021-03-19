@@ -5,6 +5,8 @@ import cv2
 from functools import partial
 import sys
 
+from PIL import Image
+
 try:
     from PyQt5.QtGui import *
     from PyQt5.QtCore import *
@@ -51,7 +53,7 @@ class PictureDialog:
     def newFace(self, i, recomms, ):
         box = np.round(recomms[i][1][0][0]).astype(np.int16)
         imgPath = (recomms[i][2][:-2]) if recomms[i][2][-2] == '_' else (recomms[i][2][:-3])
-        image = cv2.imread(imgPath)[box[1] - 5:box[3] + 5, box[0] - 5:box[2] + 5]
+        image = np.array(Image.open(imgPath)[box[1] - 5:box[3] + 5, box[0] - 5:box[2] + 5])
         image = cv2.resize(image, (self.image_size, self.image_size))
         cv2.imwrite('temp/' + str(i) + '.jpg', image)
         url = 'temp/' + str(i) + '.jpg'

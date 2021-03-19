@@ -15,6 +15,7 @@ import numpy as np
 from functools import partial
 
 import piexif
+from PIL import Image
 from sklearn.metrics.pairwise import cosine_similarity
 
 from libs import oneCsvFile
@@ -155,7 +156,6 @@ class MainWindow(QMainWindow, WindowMixin):
         self.newId = None
         self.recomImages = []
 
-
         # self.recomList.addItem(item1)
         # self.recomList.addItem(item2)
 
@@ -175,11 +175,6 @@ class MainWindow(QMainWindow, WindowMixin):
         faceSetTextContainer.setLayout(faceSetLayout)
 
         self.preProcessTextLine = QLineEdit()
-        self.preProcessButton = QPushButton()
-        self.preProcessButton.setStyleSheet('QPushButton {background-color: #A3C1DA; color: red;}')
-        self.preProcessButton.setText('Choose dataset path')
-        self.preProcessButton.setToolTip("choose your dataset's directory")
-        self.preProcessButton.clicked.connect(self.getPreProcessPath)
         self.preProcessOkButton = QPushButton()
         self.preProcessOkButton.setStyleSheet('QPushButton {background-color: #00F1F0; color: blue;}')
         self.preProcessOkButton.setText('from dir')
@@ -194,7 +189,6 @@ class MainWindow(QMainWindow, WindowMixin):
 
         preProcessLayout = QHBoxLayout()
         preProcessLayout.addWidget(self.preProcessTextLine)
-        preProcessLayout.addWidget(self.preProcessButton)
         preProcessLayout.addWidget(self.preProcessOkButton)
         preProcessLayout.addWidget(self.preProcessCsvButton)
         preProcessTextContainer = QWidget()
@@ -286,7 +280,6 @@ class MainWindow(QMainWindow, WindowMixin):
         self.addDockWidget(Qt.RightDockWidgetArea, self.filedock)
         self.filedock.setFeatures(QDockWidget.DockWidgetFloatable)
         self.addDockWidget(Qt.BottomDockWidgetArea, self.recomDock)
-
 
         self.dockFeatures = QDockWidget.DockWidgetClosable | QDockWidget.DockWidgetFloatable
         self.dock.setFeatures(self.dock.features() ^ self.dockFeatures)
@@ -1012,9 +1005,10 @@ class MainWindow(QMainWindow, WindowMixin):
         if not item:
             return
         # text = self.labelDialog.popUp(item.text())
-        if self.canvas.selectedShape is None :
+        if self.canvas.selectedShape is None:
             return
-        image = cv2.imread(self.filePath)
+        image = Image.open(self.filePath)
+        image = np.array(image)
         # points = convertPointsToXY(self.canvas.selectedShape.points)
         points = []
         points.append(round(self.canvas.selectedShape.points[0].x()))
@@ -1030,16 +1024,17 @@ class MainWindow(QMainWindow, WindowMixin):
             print("recommender cant find boxes on this shape")
         indexes = []
         k = -1
-        if emb is not None:
+        if emb is not None and os.path.exists('embs.npy'):
             self.embsDict = np.load('embs.npy', allow_pickle=True).item()
             for key in list(self.embsDict.keys()):
                 key_emb, key_box, key_name = self.embsDict[key]
+                p = (key[:-2]) if key[-2] == '_' else (key[2][:-3])
+                if not os.path.exists(p):continue
                 a = cosine_similarity(emb, key_emb)
                 basename = os.path.basename(os.path.splitext(key)[0])
                 name = key.split(basename)[0].split(os.path.sep)[-2:-1][0]
                 if a[0][0] > 0.1:
                     indexes.append((a[0][0], key_box, key, key_name))
-
 
         self.w = QDialog()
         self.buttons = []
@@ -1049,14 +1044,7 @@ class MainWindow(QMainWindow, WindowMixin):
         self.image_pad = IMAGE_PAD
         self.newId = None
         self.recomLayout.addWidget(self.w)
-        if self.preProcessPath is None:
-            self.errorMessage('None path', 'please choose a path ')
-        elif not os.path.isdir(self.preProcessPath):
-            self.errorMessage('wrong path', self.preProcessPath + "isn't directory")
-        else:
-            self.showWindow(indexes)
-
-
+        self.showWindow(indexes)
 
         if self.clickedItem is None:
             text = item.text()
@@ -1603,6 +1591,20 @@ class MainWindow(QMainWindow, WindowMixin):
         self.preProcessTextLine.setText(targetDirPath)
         self.preProcessPath = targetDirPath
 
+
+    def getPreProcessCsvPath(self):
+        if not self.mayContinue():
+            return
+        path = os.path.dirname(ustr(self.preProcessPath)) if self.preProcessPath else '.'
+
+        filename = QFileDialog.getOpenFileName(self, '%s - Choose your csv DB' % __appname__, path)
+        if filename:
+            if isinstance(filename, (tuple, list)):
+                filename = filename[0]
+
+        self.preProcessTextLine.setText(filename)
+        self.preProcessPath = filename
+
     def openFile(self, _value=False):
         if not self.mayContinue():
             return
@@ -1857,6 +1859,7 @@ class MainWindow(QMainWindow, WindowMixin):
             self.canvas.finalise()
 
     def preProcessingWithPath(self):
+        self.getPreProcessPath()
         path = self.preProcessPath
 
         if self.preProcessPath is None:
@@ -1864,15 +1867,19 @@ class MainWindow(QMainWindow, WindowMixin):
         elif not os.path.isdir(self.preProcessPath):
             self.errorMessage('wrong path', self.preProcessPath + "isn't directory")
         else:
+            print('Getting embedings from : ' + path + ' please wait')
             if os.path.exists('embs.npy'):
                 self.embsDict = np.load('embs.npy', allow_pickle='TRUE').item()
             imagesPath = self.scanAllImages(path)
+            l = len(imagesPath)
+            i = 0
             for p in imagesPath:
                 basename = os.path.basename(os.path.splitext(p)[0])
                 filedir = p.split(basename)[0].split(os.path.sep)[-2:-1][0]
                 if filedir == 'multi':
                     continue
-                image = cv2.imread(p)
+                image = Image.open(p)
+                image = np.array(image)
                 try:
                     boxes, embs = self.box_recommender.detector.detectWithLandMark(image,
                                                                                    self.box_recommender.detector.detector)
@@ -1880,29 +1887,36 @@ class MainWindow(QMainWindow, WindowMixin):
                     continue
                 if len(embs) == 0:
                     continue
-
+                print('wait : ' + str(i*100/l),end='\r')
                 self.embsDict[p + '_0'] = [embs, boxes, filedir]
+                i += 1
             np.save('embs.npy', self.embsDict)
 
+
     def preProcessingWithCsv(self):
-        csvPath = self.csvFilePath
+        self.getPreProcessCsvPath()
+        csvPath = self.preProcessPath
         if csvPath is None:
             self.errorMessage('None path', 'please choose a path ')
         elif csvPath.split('.')[-1] != 'csv':
             self.errorMessage('wrong path', csvPath + "isn't csv")
         else:
+            print('Getting embedings from : ' + csvPath + ' please wait')
             if os.path.exists('embs.npy'):
                 self.embsDict = np.load('embs.npy', allow_pickle='TRUE').item()
             lines = []
-            with open(csvPath, mode='r') as r:
+            with open(csvPath, mode='r',encoding = 'utf-8') as r:
                 reader = csv.DictReader(r, oneCsvFile.FIELD_NAMES)
+                i = 0
+                l = 11
                 for row in reader:
                     if int(row['getembs']):
                         lines.append(row)
                         continue
                     row_path = row['path']
 
-                    image = cv2.imread(row_path)
+                    image = np.array(Image.open(row_path))
+
                     shape = [int(row['xmin']), int(row['ymin']), int(row['xmax']), int(row['ymax'])]
 
                     img = image[shape[1] - 5:shape[3] + 5, shape[0] - 5:shape[2] + 5]
@@ -1918,12 +1932,15 @@ class MainWindow(QMainWindow, WindowMixin):
                         continue
                     shape = [np.array([shape])]
                     self.embsDict[row_path + '_' + str(row['index'])] = [embs, shape, row['name']]
-                with open(csvPath, mode='w', newline='') as f:
-                    writer = csv.DictWriter(f, oneCsvFile.FIELD_NAMES)
-                    writer.writerows(lines)
+                    print('wait : ' + str(i * 100 / l), end='\r')
+                    i +=1
+            with open(csvPath, mode='w', newline='',encoding='utf-8') as f:
+                writer = csv.DictWriter(f, oneCsvFile.FIELD_NAMES)
+                writer.writerows(lines)
 
-                np.save('embs.npy', self.embsDict)
+            np.save('embs.npy', self.embsDict)
             self.status("Getting embedings is done")
+        print("done", end='\r')
 
     def showWindow(self, indexes):
         length = min(8, len(indexes))
@@ -1940,11 +1957,15 @@ class MainWindow(QMainWindow, WindowMixin):
     def newFace(self, i, recomms, ):
         box = np.round(recomms[i][1][0][0]).astype(np.int16)
         imgPath = (recomms[i][2][:-2]) if recomms[i][2][-2] == '_' else (recomms[i][2][:-3])
-        image = cv2.imread(imgPath)[box[1] - 5:box[3] + 5, box[0] - 5:box[2] + 5]
+        try:
+            image = Image.open(imgPath)
+
+        except:
+            return
+        image = np.array(image)[box[1] - 5:box[3] + 5, box[0] - 5:box[2] + 5, ::-1]
         image = cv2.resize(image, (self.image_size, self.image_size))
         cv2.imwrite('temp/' + str(i) + '.jpg', image)
         url = 'temp/' + str(i) + '.jpg'
-
         self.buttons.append(QPushButton(self.w))
         self.buttons[i].setStyleSheet(BUTTON_CSS.replace('xxxxx.jpg', url))
         self.buttons[i].setGeometry(i * self.image_size + self.image_pad, self.image_pad, self.image_size,
@@ -1954,7 +1975,7 @@ class MainWindow(QMainWindow, WindowMixin):
         self.labels.append(
             QLabel(parent=self.w, text='name :' + recomms[i][3] + '\nsimilarity : ' + str(round(recomms[i][0], 3))))
 
-        self.labels[i].setGeometry(i * self.image_size + 3 * self.image_pad, self.image_size ,
+        self.labels[i].setGeometry(i * self.image_size + 3 * self.image_pad, self.image_size,
                                    self.image_size,
                                    10 * self.image_pad)
 
@@ -1994,6 +2015,7 @@ class MainWindow(QMainWindow, WindowMixin):
             self.setDirty()
             self.updateComboBox()
         self.w.close()
+
     def newInput(self, i):
         self.buttons.append(QPushButton(self.w))
         self.buttons[i].setText('new')

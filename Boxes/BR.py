@@ -1,6 +1,8 @@
 from Boxes.FR import FaceDetector
 import cv2
-
+import matplotlib.image as mpimg
+from PIL import Image
+import numpy as np
 
 class BoxRecommender:
     def __init__(self, modelpath="model.h5", box_type="face"):
@@ -16,13 +18,8 @@ class BoxRecommender:
         if image is not None:
             self.image = image
         else:
-            try:
-                image = cv2.imread(image_path)[:, :, ::-1]
-            except:
-                image =cv2.imread(image_path)
+            image = Image.open(image_path)
+            image = np.array(image)[:, :, ::-1]
             self.image = image
         self.detector.detect(self.image)
         self.points = self.detector.points
-
-
-
