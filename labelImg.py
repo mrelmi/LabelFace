@@ -2070,6 +2070,8 @@ def get_main_app(argv=[]):
 
 def main():
     '''construct main app and run it'''
+    if not os.path.exists('temp'):
+        os.mkdir('temp')
     app, _win = get_main_app(sys.argv)
     return app.exec_()
 
