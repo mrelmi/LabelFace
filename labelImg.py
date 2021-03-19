@@ -14,7 +14,6 @@ import numpy as np
 
 from functools import partial
 
-import piexif
 from PIL import Image
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -63,8 +62,6 @@ from libs.ustr import ustr
 from libs.hashableQListWidgetItem import HashableQListWidgetItem
 
 from Boxes.BR import BoxRecommender
-from os import listdir
-from os.path import isfile, join
 
 __appname__ = 'labelImg'
 
