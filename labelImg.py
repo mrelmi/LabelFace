@@ -141,6 +141,14 @@ class MainWindow(QMainWindow, WindowMixin):
         listLayout = QVBoxLayout()
         listLayout.setContentsMargins(0, 0, 0, 0)
 
+        self.similarityThreshText = QLineEdit()
+        self.similarityThreshLabel = QLabel()
+        self.similarityThreshLabel.setText("similarity threshold :")
+
+        self.similarityLayout = QHBoxLayout()
+        self.similarityLayout.addWidget(self.similarityThreshLabel)
+        self.similarityLayout.addWidget(self.similarityThreshText)
+
         self.recomLayout = QHBoxLayout()
         self.recomLayout.setContentsMargins(0, 0, 0, 0)
 
@@ -239,6 +247,12 @@ class MainWindow(QMainWindow, WindowMixin):
         self.recomDock.setObjectName("recomms")
         self.recomDock.setWidget(recomContainer)
 
+        configs = QWidget()
+        configs.setLayout(self.similarityLayout)
+        self.configDock = QDockWidget("Constants", self)
+        self.configDock.setObjectName("configs")
+        self.configDock.setWidget(configs)
+
         self.fileListWidget = QListWidget()
         self.fileListWidget.itemDoubleClicked.connect(self.fileitemDoubleClicked)
         filelistLayout = QVBoxLayout()
@@ -275,6 +289,7 @@ class MainWindow(QMainWindow, WindowMixin):
         self.setCentralWidget(scroll)
         self.addDockWidget(Qt.RightDockWidgetArea, self.dock)
         self.addDockWidget(Qt.RightDockWidgetArea, self.filedock)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.configDock)
         self.filedock.setFeatures(QDockWidget.DockWidgetFloatable)
         self.addDockWidget(Qt.BottomDockWidgetArea, self.recomDock)
 
@@ -1026,11 +1041,20 @@ class MainWindow(QMainWindow, WindowMixin):
             for key in list(self.embsDict.keys()):
                 key_emb, key_box, key_name = self.embsDict[key]
                 p = (key[:-2]) if key[-2] == '_' else (key[2][:-3])
-                if not os.path.exists(p):continue
+                if not os.path.exists(p): continue
                 a = cosine_similarity(emb, key_emb)
                 basename = os.path.basename(os.path.splitext(key)[0])
                 name = key.split(basename)[0].split(os.path.sep)[-2:-1][0]
-                if a[0][0] > 0.1:
+                thresh = 0.1
+                try:
+                    thresh = float(self.similarityThreshText.text())
+                    if 100 > thresh > 1:
+                        thresh = thresh / 100.
+                    elif thresh < 1:
+                        thresh = thresh
+                except:
+                    pass
+                if a[0][0] > thresh:
                     indexes.append((a[0][0], key_box, key, key_name))
 
         self.w = QDialog()
@@ -1588,7 +1612,6 @@ class MainWindow(QMainWindow, WindowMixin):
         self.preProcessTextLine.setText(targetDirPath)
         self.preProcessPath = targetDirPath
 
-
     def getPreProcessCsvPath(self):
         if not self.mayContinue():
             return
@@ -1884,11 +1907,10 @@ class MainWindow(QMainWindow, WindowMixin):
                     continue
                 if len(embs) == 0:
                     continue
-                print('wait : ' + str(i*100/l),end='\r')
+                print('wait : ' + str(i * 100 / l), end='\r')
                 self.embsDict[p + '_0'] = [embs, boxes, filedir]
                 i += 1
             np.save('embs.npy', self.embsDict)
-
 
     def preProcessingWithCsv(self):
         self.getPreProcessCsvPath()
@@ -1902,10 +1924,8 @@ class MainWindow(QMainWindow, WindowMixin):
             if os.path.exists('embs.npy'):
                 self.embsDict = np.load('embs.npy', allow_pickle='TRUE').item()
             lines = []
-            with open(csvPath, mode='r',encoding = 'utf-8') as r:
+            with open(csvPath, mode='r', encoding='utf-8') as r:
                 reader = csv.DictReader(r, oneCsvFile.FIELD_NAMES)
-                i = 0
-                l = 11
                 for row in reader:
                     if int(row['getembs']):
                         lines.append(row)
@@ -1929,9 +1949,8 @@ class MainWindow(QMainWindow, WindowMixin):
                         continue
                     shape = [np.array([shape])]
                     self.embsDict[row_path + '_' + str(row['index'])] = [embs, shape, row['name']]
-                    print('wait : ' + str(i * 100 / l), end='\r')
-                    i +=1
-            with open(csvPath, mode='w', newline='',encoding='utf-8') as f:
+
+            with open(csvPath, mode='w', newline='', encoding='utf-8') as f:
                 writer = csv.DictWriter(f, oneCsvFile.FIELD_NAMES)
                 writer.writerows(lines)
 
@@ -1968,6 +1987,7 @@ class MainWindow(QMainWindow, WindowMixin):
         self.buttons[i].setGeometry(i * self.image_size + self.image_pad, self.image_pad, self.image_size,
                                     self.image_size)
         self.buttons[i].clicked.connect(partial(self.p, recomms[i][3]))
+        self.buttons[i].setToolTip(imgPath)
 
         self.labels.append(
             QLabel(parent=self.w, text='name :' + recomms[i][3] + '\nsimilarity : ' + str(round(recomms[i][0], 3))))
