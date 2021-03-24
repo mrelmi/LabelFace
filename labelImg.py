@@ -3,10 +3,8 @@
 import argparse
 import codecs
 import csv
-import distutils.spawn
 import os.path
 import platform
-import re
 import sys
 import subprocess
 import cv2
@@ -18,8 +16,6 @@ from PIL import Image
 from sklearn.metrics.pairwise import cosine_similarity
 
 from libs import oneCsvFile
-from libs.oneCsvFile import OneFileReader
-from libs.pictureDialog import PictureDialog, BUTTON_CSS, IMAGE_SIZE, IMAGE_PAD
 
 try:
     from PyQt5.QtGui import *
@@ -149,6 +145,24 @@ class MainWindow(QMainWindow, WindowMixin):
         self.similarityLayout.addWidget(self.similarityThreshLabel)
         self.similarityLayout.addWidget(self.similarityThreshText)
 
+
+        self.recomImageSizeText = QLineEdit()
+        self.recomImageSizeLabel = QLabel()
+        self.recomImageSizeLabel.setText("recommended image's size :")
+
+
+        self.recomImagePadText = QLineEdit()
+        self.recomImagePadLabel = QLabel()
+        self.recomImagePadLabel.setText("recommended image's pad :")
+
+        self.recomSizeLayout = QHBoxLayout()
+        self.recomSizeLayout.addWidget(self.recomImageSizeLabel)
+        self.recomSizeLayout.addWidget(self.recomImageSizeText)
+
+        self.recomPadLayout = QHBoxLayout()
+        self.recomPadLayout.addWidget(self.recomImagePadLabel)
+        self.recomPadLayout.addWidget(self.recomImagePadText)
+
         self.recomLayout = QHBoxLayout()
         self.recomLayout.setContentsMargins(0, 0, 0, 0)
 
@@ -156,13 +170,11 @@ class MainWindow(QMainWindow, WindowMixin):
         self.buttons = []
         self.labels = []
         self.clickedItem = None
-        self.image_size = IMAGE_SIZE
-        self.image_pad = IMAGE_PAD
+        self.image_size = 200
+        self.image_pad = 10
         self.newId = None
         self.recomImages = []
 
-        # self.recomList.addItem(item1)
-        # self.recomList.addItem(item2)
 
         self.recomLayout.addWidget(self.w)
         recomContainer = QWidget()
@@ -247,11 +259,24 @@ class MainWindow(QMainWindow, WindowMixin):
         self.recomDock.setObjectName("recomms")
         self.recomDock.setWidget(recomContainer)
 
-        configs = QWidget()
-        configs.setLayout(self.similarityLayout)
+        recomSizeContainer = QWidget()
+        recomSizeContainer.setLayout(self.recomSizeLayout)
+        similarityContainer = QWidget()
+        similarityContainer.setLayout(self.similarityLayout)
+        recomPadContainer = QWidget()
+        recomPadContainer.setLayout(self.recomPadLayout)
+        configs = QVBoxLayout()
+        configs.addWidget(recomSizeContainer)
+        configs.addWidget(similarityContainer)
+        configs.addWidget(recomPadContainer)
+        confWidget = QWidget()
+        confWidget.setLayout(configs)
+        self.similarityThreshText.setText('0.2')
+        self.recomImagePadText.setText('10')
+        self.recomImageSizeText.setText('200')
         self.configDock = QDockWidget("Constants", self)
         self.configDock.setObjectName("configs")
-        self.configDock.setWidget(configs)
+        self.configDock.setWidget(confWidget)
 
         self.fileListWidget = QListWidget()
         self.fileListWidget.itemDoubleClicked.connect(self.fileitemDoubleClicked)
@@ -1066,8 +1091,14 @@ class MainWindow(QMainWindow, WindowMixin):
         self.buttons = []
         self.labels = []
         self.clickedItem = None
-        self.image_size = IMAGE_SIZE
-        self.image_pad = IMAGE_PAD
+        try:
+            self.image_size = int(self.recomImageSizeText.text())
+        except:
+            self.image_size = 200
+        try :
+            self.image_pad = int(self.recomImagePadText().text())
+        except:
+            self.image_pad = 10
         self.newId = None
         self.recomLayout.addWidget(self.w)
         self.showWindow(indexes)

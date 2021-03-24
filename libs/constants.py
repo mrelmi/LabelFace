@@ -23,3 +23,10 @@ FORMAT_ONECSV = 'ONECSV'
 SETTING_DRAW_SQUARE = 'draw/square'
 SETTING_LABEL_FILE_FORMAT= 'labelFileFormat'
 DEFAULT_ENCODING = 'utf-8'
+BUTTON_CSS = "background-image : url(xxxxx.jpg);margin: 1px; padding: 10px;\
+                         background-color: \
+                               rgba(255,255,0,255); \
+                               color: rgba(0,0,0,255); \
+                               border-style: solid; \
+                               border-radius: 4px; border-width: 3px; \
+                               border-color: rgba(0,0,0,255);"
