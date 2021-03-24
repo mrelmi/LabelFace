@@ -1590,8 +1590,6 @@ class MainWindow(QMainWindow, WindowMixin):
             self.loadFile(filename)
 
     def getFacesetPath(self, ):
-        if not self.mayContinue():
-            return
         path = os.path.dirname(ustr(self.filePath)) if self.filePath else '.'
 
         filename = QFileDialog.getOpenFileName(self, '%s - Choose your csv DB' % __appname__, path)
@@ -1602,8 +1600,6 @@ class MainWindow(QMainWindow, WindowMixin):
         self.csvFilePath = filename
 
     def getPreProcessPath(self):
-        if not self.mayContinue():
-            return
 
         if self.preProcessPath and os.path.exists(self.preProcessPath):
             defaultOpenDirPath = self.preProcessPath
@@ -1618,8 +1614,6 @@ class MainWindow(QMainWindow, WindowMixin):
         self.preProcessPath = targetDirPath
 
     def getPreProcessCsvPath(self):
-        if not self.mayContinue():
-            return
         path = os.path.dirname(ustr(self.preProcessPath)) if self.preProcessPath else '.'
 
         filename = QFileDialog.getOpenFileName(self, '%s - Choose your csv DB' % __appname__, path)
