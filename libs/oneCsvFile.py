@@ -5,7 +5,7 @@ import csv
 from libs.utils import convertPointsToXY
 
 TARGET_FILE = 'faceset.csv'
-FIELD_NAMES = ['path', 'xmin', 'ymin', 'xmax', 'ymax', 'name', 'drawingFlag', 'getembs', 'index']
+FIELD_NAMES = ['path', 'xmin', 'ymin', 'xmax', 'ymax', 'name', 'drawingFlag', 'getembs']
 
 
 class OneFileWriter:
@@ -33,7 +33,7 @@ class OneFileWriter:
                 p.append(round(shape.points[2].y()))
                 writer.writerow(
                     {'path': imagepath, 'xmin': p[0], 'ymin': p[1], 'xmax': p[2], 'ymax': p[3], 'name': shape.label,
-                     'drawingFlag': shape.drawingFlag, 'getembs': 0, 'index': i})
+                     'drawingFlag': shape.drawingFlag, 'getembs': 0})
                 i += 1
 
     def deleteExistentImagepath(self, imagePath, targetFile):

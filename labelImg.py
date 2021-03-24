@@ -1040,11 +1040,16 @@ class MainWindow(QMainWindow, WindowMixin):
             self.embsDict = np.load('embs.npy', allow_pickle=True).item()
             for key in list(self.embsDict.keys()):
                 key_emb, key_box, key_name = self.embsDict[key]
-                p = (key[:-2]) if key[-2] == '_' else (key[2][:-3])
+                p = None
+                j = 0
+                for i in range(len(key) - 1, 0, -1):
+                    if key[i] == '.': j += 1
+                    if j == 4:
+                        p = key[:i]
+                        break
                 if not os.path.exists(p): continue
                 a = cosine_similarity(emb, key_emb)
-                basename = os.path.basename(os.path.splitext(key)[0])
-                name = key.split(basename)[0].split(os.path.sep)[-2:-1][0]
+
                 thresh = 0.1
                 try:
                     thresh = float(self.similarityThreshText.text())
@@ -1055,7 +1060,7 @@ class MainWindow(QMainWindow, WindowMixin):
                 except:
                     pass
                 if a[0][0] > thresh:
-                    indexes.append((a[0][0], key_box, key, key_name))
+                    indexes.append((a[0][0], key_box, p, key_name))
 
         self.w = QDialog()
         self.buttons = []
@@ -1907,9 +1912,13 @@ class MainWindow(QMainWindow, WindowMixin):
                     continue
                 if len(embs) == 0:
                     continue
-                print('wait : ' + str(i * 100 / l), end='\r')
-                self.embsDict[p + '_0'] = [embs, boxes, filedir]
+                boxes = np.int16(np.round(boxes[0][0]))
+                self.embsDict[
+                    p + '.' + str(boxes[0]) + '.' + str(boxes[1]) + '.' + str(boxes[2]) + '.' + str(boxes[3])] = [embs,
+                                                                                                                  boxes,
+                                                                                                                  filedir]
                 i += 1
+            print('successfully done!')
             np.save('embs.npy', self.embsDict)
 
     def preProcessingWithCsv(self):
@@ -1947,16 +1956,17 @@ class MainWindow(QMainWindow, WindowMixin):
                         continue
                     if len(embs) == 0:
                         continue
-                    shape = [np.array([shape])]
-                    self.embsDict[row_path + '_' + str(row['index'])] = [embs, shape, row['name']]
+                    shape = np.array(shape).astype(np.int16)
+                    self.embsDict[
+                        row_path + '.' + row['xmin'] + '.' + row['ymin'] + '.' + row['xmax'] + '.' + row['ymax']] = [
+                        embs, shape, row['name']]
 
             with open(csvPath, mode='w', newline='', encoding='utf-8') as f:
                 writer = csv.DictWriter(f, oneCsvFile.FIELD_NAMES)
                 writer.writerows(lines)
 
+            print('successfully done!')
             np.save('embs.npy', self.embsDict)
-            self.status("Getting embedings is done")
-        print("done", end='\r')
 
     def showWindow(self, indexes):
         length = min(8, len(indexes))
@@ -1971,14 +1981,16 @@ class MainWindow(QMainWindow, WindowMixin):
         self.w.show()
 
     def newFace(self, i, recomms, ):
-        box = np.round(recomms[i][1][0][0]).astype(np.int16)
-        imgPath = (recomms[i][2][:-2]) if recomms[i][2][-2] == '_' else (recomms[i][2][:-3])
+        box = recomms[i][1]
+        imgPath = recomms[i][2]
         try:
             image = Image.open(imgPath)
 
         except:
             return
-        image = np.array(image)[box[1] - 5:box[3] + 5, box[0] - 5:box[2] + 5, ::-1]
+        image = np.array(image)
+        s = image.shape
+        image = image[max(box[1] - 5, 0):min(box[3] + 5, s[1]), max(box[0] - 5,0):min(box[2] + 5,s[1]), ::-1]
         image = cv2.resize(image, (self.image_size, self.image_size))
         cv2.imwrite('temp/' + str(i) + '.jpg', image)
         url = 'temp/' + str(i) + '.jpg'
