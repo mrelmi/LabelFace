@@ -210,7 +210,7 @@ class LabelFile(object):
 
         return (int(xmin), int(ymin), int(xmax), int(ymax))
 
-    def saveOneCsvFile(self, shapes, imagePath, imageData):
+    def saveOneCsvFile(self, shapes, imagePath, imageData,subject_dictionary):
 
         imgFolderPath = os.path.dirname(imagePath)
         imgFolderName = os.path.split(imgFolderPath)[-1]
@@ -226,8 +226,8 @@ class LabelFile(object):
         writer = OneFileWriter(imgFolderName, imgFileName,
                                imageShape, localImgPath=imagePath)
 
-        writer.save(shapes, imagePath)
+        writer.save(shapes, imagePath, subject_dictionary)
 
-def getShapesFromCsvFaceSet(imagePath, csvFilePath=TARGET_FILE):
+def getShapesFromCsvFaceSet(imagePath, csvFilePath=TARGET_FILE,subject_dictionary={}):
     reader = OneFileReader()
-    return reader.loadShapes(imagePath, csvFilePath)
+    return reader.loadShapes(imagePath, csvFilePath,subjects_dictionary)

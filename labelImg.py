@@ -89,6 +89,11 @@ class MainWindow(QMainWindow, WindowMixin):
         self.setWindowTitle(__appname__)
 
         self.csvFilePath = 'faceset.csv'
+        self.subject_dictionary = {}
+        self.subject_name_to_id_dictionary = {}
+        self.path_dictionary = {}
+        self.path_to_id_dictionary = {}
+
         # Recommender
         self.box_recommender = BoxRecommender()
         self.saved_label_exist = False
@@ -145,11 +150,9 @@ class MainWindow(QMainWindow, WindowMixin):
         self.similarityLayout.addWidget(self.similarityThreshLabel)
         self.similarityLayout.addWidget(self.similarityThreshText)
 
-
         self.recomImageSizeText = QLineEdit()
         self.recomImageSizeLabel = QLabel()
         self.recomImageSizeLabel.setText("recommended image's size :")
-
 
         self.recomImagePadText = QLineEdit()
         self.recomImagePadLabel = QLabel()
@@ -174,7 +177,6 @@ class MainWindow(QMainWindow, WindowMixin):
         self.image_pad = 10
         self.newId = None
         self.recomImages = []
-
 
         self.recomLayout.addWidget(self.w)
         recomContainer = QWidget()
@@ -206,7 +208,7 @@ class MainWindow(QMainWindow, WindowMixin):
 
         preProcessLayout = QHBoxLayout()
         preProcessLayout.addWidget(self.preProcessTextLine)
-        preProcessLayout.addWidget(self.preProcessOkButton)
+        # preProcessLayout.addWidget(self.preProcessOkButton)
         preProcessLayout.addWidget(self.preProcessCsvButton)
         preProcessTextContainer = QWidget()
         preProcessTextContainer.setLayout(preProcessLayout)
@@ -1005,7 +1007,8 @@ class MainWindow(QMainWindow, WindowMixin):
                 # self.labelFile.saveCsvFormat(annotationFilePath, shapes, self.filePath, self.imageData, self.labelHist,
                 #                              self.lineColor.getRgb(), self.fillColor.getRgb())
 
-                self.labelFile.saveOneCsvFile(self.canvas.shapes, self.filePath, self.imageData)
+                self.labelFile.saveOneCsvFile(self.canvas.shapes, self.filePath, self.imageData,
+                                              self.subject_name_to_id_dictionary)
 
             elif self.labelFileFormat == LabelFileFormat.ONECSV:
                 self.labelFile.saveOneCsvFile(shapes, self.filePath, self.imageData)
@@ -1095,8 +1098,8 @@ class MainWindow(QMainWindow, WindowMixin):
             self.image_size = int(self.recomImageSizeText.text())
         except:
             self.image_size = 200
-        try :
-            self.image_pad = int(self.recomImagePadText().text())
+        try:
+            self.image_pad = int(self.recomImagePadText.text())
         except:
             self.image_pad = 10
         self.newId = None
@@ -1852,7 +1855,7 @@ class MainWindow(QMainWindow, WindowMixin):
         if self.filePath is None:
             return
 
-        shapes = getShapesFromCsvFaceSet(self.filePath, self.csvFilePath)
+        shapes = getShapesFromCsvFaceSet(self.filePath, self.csvFilePath, self.subject_dictionary)
         if not shapes:
             self.saved_label_exist = False
             return
@@ -1954,18 +1957,27 @@ class MainWindow(QMainWindow, WindowMixin):
         elif csvPath.split('.')[-1] != 'csv':
             self.errorMessage('wrong path', csvPath + "isn't csv")
         else:
+
+            self.make_subject_dictionary()
             print('Getting embedings from : ' + csvPath + ' please wait')
             if os.path.exists('embs.npy'):
                 self.embsDict = np.load('embs.npy', allow_pickle='TRUE').item()
             lines = []
             with open(csvPath, mode='r', encoding='utf-8') as r:
                 reader = csv.DictReader(r, oneCsvFile.FIELD_NAMES)
+
                 for row in reader:
+                    if row['getembs'] is None:
+                        row['getembs'] = '0'
+                    if row['drawingFlag'] is None:
+                        row['drawingFlag'] = '2'
                     if int(row['getembs']):
                         lines.append(row)
                         continue
                     row_path = row['path']
-
+                    if not os.path.isfile(row_path):
+                        print('there is no image in given path : ' + row_path)
+                        continue
                     image = np.array(Image.open(row_path))
 
                     shape = [int(row['xmin']), int(row['ymin']), int(row['xmax']), int(row['ymax'])]
@@ -1984,7 +1996,7 @@ class MainWindow(QMainWindow, WindowMixin):
                     shape = np.array(shape).astype(np.int16)
                     self.embsDict[
                         row_path + '.' + row['xmin'] + '.' + row['ymin'] + '.' + row['xmax'] + '.' + row['ymax']] = [
-                        embs, shape, row['name']]
+                        embs, shape, row['id']]
 
             with open(csvPath, mode='w', newline='', encoding='utf-8') as f:
                 writer = csv.DictWriter(f, oneCsvFile.FIELD_NAMES)
@@ -1992,6 +2004,19 @@ class MainWindow(QMainWindow, WindowMixin):
 
             print('successfully done!')
             np.save('embs.npy', self.embsDict)
+
+    def make_subject_dictionary(self, ):
+        dirPath = os.path.dirname(self.preProcessPath)
+        subjectPath = dirPath + '/subjects.csv'
+
+        with open(subjectPath, mode='r', encoding='utf-8') as r:
+            reader = csv.DictReader(r, ['id', 'name'])
+            for row in reader:
+                try:
+                    self.subject_dictionary[int(row['id'])] = row['name']
+                except:
+                    continue
+        self.subject_name_to_id_dictionary = {self.subject_dictionary[k]: k for k in self.subject_dictionary}
 
     def showWindow(self, indexes):
         length = min(8, len(indexes))
@@ -2015,7 +2040,7 @@ class MainWindow(QMainWindow, WindowMixin):
             return
         image = np.array(image)
         s = image.shape
-        image = image[max(box[1] - 5, 0):min(box[3] + 5, s[1]), max(box[0] - 5,0):min(box[2] + 5,s[1]), ::-1]
+        image = image[max(box[1] - 5, 0):min(box[3] + 5, s[1]), max(box[0] - 5, 0):min(box[2] + 5, s[1]), ::-1]
         image = cv2.resize(image, (self.image_size, self.image_size))
         cv2.imwrite('temp/' + str(i) + '.jpg', image)
         url = 'temp/' + str(i) + '.jpg'

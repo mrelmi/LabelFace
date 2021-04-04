@@ -5,7 +5,7 @@ import csv
 from libs.utils import convertPointsToXY
 
 TARGET_FILE = 'faceset.csv'
-FIELD_NAMES = ['path', 'xmin', 'ymin', 'xmax', 'ymax', 'name', 'drawingFlag', 'getembs']
+FIELD_NAMES = ['path', 'xmin', 'ymin', 'xmax', 'ymax', 'id', 'drawingFlag', 'getembs']
 
 
 class OneFileWriter:
@@ -20,7 +20,7 @@ class OneFileWriter:
 
         self.fieldnames = FIELD_NAMES
 
-    def save(self, shapes, imagepath, targetFile=TARGET_FILE):
+    def save(self, shapes, imagepath, targetFile=TARGET_FILE,subject_dictionary={}):
         self.deleteExistentImagepath(imagepath, targetFile)
         with open(targetFile, mode='a', newline='',encoding="utf-8") as f:
             writer = csv.DictWriter(f, self.fieldnames)
@@ -31,8 +31,9 @@ class OneFileWriter:
                 p.append(round(shape.points[0].y()))
                 p.append(round(shape.points[2].x()))
                 p.append(round(shape.points[2].y()))
+                id = subject_dictionary[shape.label]
                 writer.writerow(
-                    {'path': imagepath, 'xmin': p[0], 'ymin': p[1], 'xmax': p[2], 'ymax': p[3], 'name': shape.label,
+                    {'path': imagepath, 'xmin': p[0], 'ymin': p[1], 'xmax': p[2], 'ymax': p[3], 'id': id,
                      'drawingFlag': shape.drawingFlag, 'getembs': 0})
                 i += 1
 
@@ -57,7 +58,7 @@ class OneFileReader:
 
         self.fieldnames = FIELD_NAMES
 
-    def loadShapes(self, imagePath, targetFile=TARGET_FILE):
+    def loadShapes(self, imagePath, targetFile=TARGET_FILE,subjects_dictionary={}):
         shapes = []
         if not os.path.exists(targetFile):
             return
@@ -65,6 +66,7 @@ class OneFileReader:
             reader = csv.DictReader(r, self.fieldnames)
             for row in reader:
                 if row['path'] == imagePath:
-                    shapes.append([int(row['xmin']), int(row['ymin']), int(row['xmax']), int(row['ymax']), row['name'],
+                    name = row['name']
+                    shapes.append([int(row['xmin']), int(row['ymin']), int(row['xmax']), int(row['ymax']), row['id'],
                                    row['drawingFlag']])
         return shapes
