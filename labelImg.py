@@ -149,9 +149,17 @@ class MainWindow(QMainWindow, WindowMixin):
         self.similarityThreshLabel = QLabel()
         self.similarityThreshLabel.setText("similarity threshold :")
 
+        self.secondThreshText = QLineEdit()
+        self.secondThreshLabel = QLabel()
+        self.secondThreshLabel.setText("second threshold :")
+
         self.similarityLayout = QHBoxLayout()
         self.similarityLayout.addWidget(self.similarityThreshLabel)
         self.similarityLayout.addWidget(self.similarityThreshText)
+
+        self.secondThreshLayout = QHBoxLayout()
+        self.secondThreshLayout.addWidget(self.secondThreshLabel)
+        self.secondThreshLayout.addWidget(self.secondThreshText)
 
         self.recomImageSizeText = QLineEdit()
         self.recomImageSizeLabel = QLabel()
@@ -268,15 +276,19 @@ class MainWindow(QMainWindow, WindowMixin):
         recomSizeContainer.setLayout(self.recomSizeLayout)
         similarityContainer = QWidget()
         similarityContainer.setLayout(self.similarityLayout)
+        secondThreshContainer = QWidget()
+        secondThreshContainer.setLayout(self.secondThreshLayout)
         recomPadContainer = QWidget()
         recomPadContainer.setLayout(self.recomPadLayout)
         configs = QVBoxLayout()
         configs.addWidget(recomSizeContainer)
         configs.addWidget(similarityContainer)
+        configs.addWidget(secondThreshContainer)
         configs.addWidget(recomPadContainer)
         confWidget = QWidget()
         confWidget.setLayout(configs)
         self.similarityThreshText.setText('0.2')
+        self.secondThreshText.setText('0.7')
         self.recomImagePadText.setText('10')
         self.recomImageSizeText.setText('200')
         self.configDock = QDockWidget("Constants", self)
@@ -1071,10 +1083,10 @@ class MainWindow(QMainWindow, WindowMixin):
                                                                               self.box_recommender.detector.detector)
 
                 self.embsDict[id * 100 + i] = [emb, points, shape.label]
-                i +=1
+                i += 1
 
             except:
-                print("recommender cant find boxes on this shape")
+                continue
 
         np.save('embs.npy', self.embsDict)
         self.update_getembeding()
@@ -1108,17 +1120,22 @@ class MainWindow(QMainWindow, WindowMixin):
         k = -1
 
         thresh = 0.1
+        secondThresh = 0.7
         try:
             thresh = float(self.similarityThreshText.text())
+            secondThresh = float(self.secondThreshText.text())
             if 100 > thresh > 1:
                 thresh = thresh / 100.
-            elif thresh < 1:
-                thresh = thresh
+            if 100 > secondThresh > 1 :
+                secondThresh = secondThresh / 100
+
         except:
-            pass
+            thresh = 0.1
+            secondThresh = 0.7
 
         if emb is not None and os.path.exists('embs.npy'):
             self.embsDict = np.load('embs.npy', allow_pickle=True).item()
+            j = 0
             for key in list(self.embsDict.keys()):
                 key_emb, key_box, key_name = self.embsDict[key]
                 id = key // 100
@@ -1128,7 +1145,9 @@ class MainWindow(QMainWindow, WindowMixin):
 
                 if a[0][0] > thresh:
                     indexes.append((a[0][0], key_box, p, key_name))
-
+                    if a[0][0] > secondThresh:
+                        j += 1
+                if j == 3: break
         self.w = QDialog()
         self.buttons = []
         self.labels = []
@@ -1317,7 +1336,7 @@ class MainWindow(QMainWindow, WindowMixin):
                 if filePath not in list(self.path_to_id_dictionary.keys()):
                     self.update_path_id(filePath)
 
-            else :
+            else:
                 self.update_path_id(filePath)
 
         self.w.close()
@@ -1922,7 +1941,7 @@ class MainWindow(QMainWindow, WindowMixin):
             self.saved_label_exist = False
             return
         for shape in shapes:
-            self.drawPoints([(shape[0], shape[1]), (shape[2], shape[3])], shape[4],isAuto=False)
+            self.drawPoints([(shape[0], shape[1]), (shape[2], shape[3])], shape[4], isAuto=False)
 
     def loadCsvByFilename(self, csvPath):
         if self.filePath is None:
@@ -1950,7 +1969,7 @@ class MainWindow(QMainWindow, WindowMixin):
     def toogleDrawSquare(self):
         self.canvas.setDrawingShapeToSquare(self.drawSquaresOption.isChecked())
 
-    def drawPoints(self, points, label=None, drawingFlag=0,isAuto = True):
+    def drawPoints(self, points, label=None, drawingFlag=0, isAuto=True):
 
         for i in range(len(points) // 2):
             p1x, p1y = points[2 * i]
@@ -1972,7 +1991,7 @@ class MainWindow(QMainWindow, WindowMixin):
             shape.drawingFlag = drawingFlag
             self.canvas.current = shape
             self.canvas.finalise()
-            if not isAuto :
+            if not isAuto:
                 self.setClean()
 
     def preProcessingWithPath(self):
@@ -2016,7 +2035,7 @@ class MainWindow(QMainWindow, WindowMixin):
     def preProcessingWithCsv(self):
         self.getPreProcessCsvPath()
         csvPath = self.preProcessPath
-        if csvPath is None:
+        if csvPath == '':
             self.errorMessage('None path', 'please choose a path ')
         elif csvPath.split('.')[-1] != 'csv':
             self.errorMessage('wrong path', csvPath + "isn't csv")
@@ -2077,6 +2096,9 @@ class MainWindow(QMainWindow, WindowMixin):
     def make_path_id_dictionary(self):
         dirPath = os.path.dirname(self.preProcessPath)
         imagespath = dirPath + '/imagespath.csv'
+        if not os.path.isfile:
+            self.errorMessage('imagespath', 'please put the imagespath.csv on ' + dirPath + '')
+            return
         with open(imagespath, mode='r', encoding='utf-8') as r:
             reader = csv.DictReader(r, ['id', 'path', ])
             for row in reader:
@@ -2110,7 +2132,7 @@ class MainWindow(QMainWindow, WindowMixin):
         id = np.max(ids) + 1
         row['id'] = id
         row['name'] = newName
-        with open(subjectPath, mode='a', encoding='utf-8',newline='') as f:
+        with open(subjectPath, mode='a', encoding='utf-8', newline='') as f:
             writer = csv.DictWriter(f, ['id', 'name'])
             writer.writerow(row)
         self.make_subject_dictionary()
@@ -2129,7 +2151,7 @@ class MainWindow(QMainWindow, WindowMixin):
             row['id'] = id
             row['path'] = file_path
             row['getembs'] = 0
-            with open(imagespath, mode='a', encoding='utf-8',newline='') as f:
+            with open(imagespath, mode='a', encoding='utf-8', newline='') as f:
                 writer = csv.DictWriter(f, ['id', 'path', 'getembs'])
                 writer.writerow(row)
             self.path_to_id_dictionary[row['path']] = int(row['id'])
@@ -2145,14 +2167,16 @@ class MainWindow(QMainWindow, WindowMixin):
             for row in reader:
                 row['getembs'] = self.getembs_dictionary[int(row['id'])]
                 lines.append(row)
-        with open(imagespath, mode='w', newline='', encoding='utf-8',) as f:
+        with open(imagespath, mode='w', newline='', encoding='utf-8', ) as f:
             writer = csv.DictWriter(f, ['id', 'path', 'getembs'])
             writer.writerows(lines)
 
     def make_subject_dictionary(self, ):
         dirPath = os.path.dirname(self.preProcessPath)
         subjectPath = dirPath + '/subjects.csv'
-
+        if not os.path.isfile:
+            self.errorMessage('Subjects', 'please put the subjects.csv on ' + dirPath + '')
+            return
         with open(subjectPath, mode='r', encoding='utf-8', newline='') as r:
             reader = csv.DictReader(r, ['id', 'name'])
             for row in reader:
