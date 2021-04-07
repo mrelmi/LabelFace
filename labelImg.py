@@ -7,9 +7,11 @@ import os.path
 import platform
 import sys
 import subprocess
+
 import cv2
 import numpy as np
 
+from sys import stdout
 from functools import partial
 
 from PIL import Image
@@ -93,6 +95,7 @@ class MainWindow(QMainWindow, WindowMixin):
         self.subject_name_to_id_dictionary = {}
         self.path_dictionary = {}
         self.path_to_id_dictionary = {}
+        self.getembs_dictionary = {}
 
         # Recommender
         self.box_recommender = BoxRecommender()
@@ -1008,8 +1011,8 @@ class MainWindow(QMainWindow, WindowMixin):
                 #                              self.lineColor.getRgb(), self.fillColor.getRgb())
 
                 self.labelFile.saveOneCsvFile(self.canvas.shapes, self.filePath, self.imageData,
-                                              self.subject_name_to_id_dictionary)
-
+                                              self.subject_name_to_id_dictionary, self.path_to_id_dictionary)
+                self.getEmbedingsFromShapes()
             elif self.labelFileFormat == LabelFileFormat.ONECSV:
                 self.labelFile.saveOneCsvFile(shapes, self.filePath, self.imageData)
 
@@ -1036,6 +1039,45 @@ class MainWindow(QMainWindow, WindowMixin):
                 self.labelList.item(i).setCheckState(0)
             else:
                 self.labelList.item(i).setCheckState(2)
+
+    def getEmbedingsFromShapes(self):
+        if os.path.exists('embs.npy'):
+            self.embsDict = np.load('embs.npy', allow_pickle=True).item()
+        filePath = self.filePath
+        image = Image.open(filePath)
+        image = np.array(image)
+        id = -1
+        if filePath not in list(self.path_to_id_dictionary.keys()):
+            if 'labelImg-master' in filePath:
+                filePath = filePath.split('labelImg-master')[-1][1:]
+                if filePath not in list(self.path_to_id_dictionary.keys()):
+                    return
+                id = self.path_to_id_dictionary[filePath]
+        else:
+            id = self.path_to_id_dictionary[filePath]
+        self.getembs_dictionary[id] = 1
+
+        # points = convertPointsToXY(self.canvas.selectedShape.points)
+        i = 0
+        for shape in self.canvas.shapes:
+            try:
+                points = []
+                points.append(round(shape.points[0].x()))
+                points.append(round(shape.points[0].y()))
+                points.append(round(shape.points[2].x()))
+                points.append(round(shape.points[2].y()))
+                crop = cropImage(image, points, thresh=5)
+                boxes, emb = self.box_recommender.detector.detectWithLandMark(crop,
+                                                                              self.box_recommender.detector.detector)
+
+                self.embsDict[id * 100 + i] = [emb, points, shape.label]
+                i +=1
+
+            except:
+                print("recommender cant find boxes on this shape")
+
+        np.save('embs.npy', self.embsDict)
+        self.update_getembeding()
 
     def labelSelectionChanged(self):
         self.w.close()
@@ -1064,29 +1106,26 @@ class MainWindow(QMainWindow, WindowMixin):
             print("recommender cant find boxes on this shape")
         indexes = []
         k = -1
+
+        thresh = 0.1
+        try:
+            thresh = float(self.similarityThreshText.text())
+            if 100 > thresh > 1:
+                thresh = thresh / 100.
+            elif thresh < 1:
+                thresh = thresh
+        except:
+            pass
+
         if emb is not None and os.path.exists('embs.npy'):
             self.embsDict = np.load('embs.npy', allow_pickle=True).item()
             for key in list(self.embsDict.keys()):
                 key_emb, key_box, key_name = self.embsDict[key]
-                p = None
-                j = 0
-                for i in range(len(key) - 1, 0, -1):
-                    if key[i] == '.': j += 1
-                    if j == 4:
-                        p = key[:i]
-                        break
+                id = key // 100
+                p = self.path_dictionary[id]
                 if not os.path.exists(p): continue
                 a = cosine_similarity(emb, key_emb)
 
-                thresh = 0.1
-                try:
-                    thresh = float(self.similarityThreshText.text())
-                    if 100 > thresh > 1:
-                        thresh = thresh / 100.
-                    elif thresh < 1:
-                        thresh = thresh
-                except:
-                    pass
                 if a[0][0] > thresh:
                     indexes.append((a[0][0], key_box, p, key_name))
 
@@ -1110,6 +1149,7 @@ class MainWindow(QMainWindow, WindowMixin):
             text = item.text()
             if self.newId is not None:
                 text = self.newId[0]
+                self.update_subjects(text)
         else:
             text = self.clickedItem
         if text is not None:
@@ -1265,7 +1305,21 @@ class MainWindow(QMainWindow, WindowMixin):
             item.setCheckState(Qt.Checked if value else Qt.Unchecked)
 
     def loadFile(self, filePath=None):
+
         """Load the specified file, or the last opened file if None."""
+        self.preProcessPath = self.preProcessTextLine.text()
+        self.make_path_id_dictionary()
+        self.make_subject_dictionary()
+
+        if filePath not in list(self.path_to_id_dictionary.keys()):
+            if 'labelImg-master' in filePath:
+                filePath = filePath.split('labelImg-master')[-1][1:]
+                if filePath not in list(self.path_to_id_dictionary.keys()):
+                    self.update_path_id(filePath)
+
+            else :
+                self.update_path_id(filePath)
+
         self.w.close()
         self.resetState()
         self.canvas.setEnabled(False)
@@ -1456,7 +1510,7 @@ class MainWindow(QMainWindow, WindowMixin):
             settings[SETTING_LAST_OPEN_DIR] = self.lastOpenDir
         else:
             settings[SETTING_LAST_OPEN_DIR] = ''
-        if self.preProcessPath and os.path.isdir(self.preProcessPath):
+        if self.preProcessPath and os.path.isfile(self.preProcessPath):
             settings[SETTING_PREPROCESSING_PATH] = self.preProcessPath
         if self.csvFilePath and os.path.isfile(self.csvFilePath):
             settings[SETTING_CSVDATABASE] = self.csvFilePath
@@ -1632,6 +1686,7 @@ class MainWindow(QMainWindow, WindowMixin):
                 filename = filename[0]
         self.faceSetTextLine.setText(filename)
         self.csvFilePath = filename
+        self.preProcessPath = filename
 
     def getPreProcessPath(self):
 
@@ -1754,6 +1809,12 @@ class MainWindow(QMainWindow, WindowMixin):
         msg = u'You have unsaved changes, would you like to save them and proceed?\nClick "No" to undo all changes.'
         return QMessageBox.warning(self, u'Attention', msg, yes | no | cancel)
 
+    def sameNameExist(self, name):
+        yes, no = QMessageBox.Yes, QMessageBox.No
+        id = self.subject_name_to_id_dictionary[name]
+        msg = u'there is {} in subjects with id = {} do you want save new id ? '.format(name, id)
+        return QMessageBox.warning(self, u'Attention', msg, yes | no)
+
     def errorMessage(self, title, message):
         return QMessageBox.critical(self, title,
                                     '<p><b>%s</b></p>%s' % (title, message))
@@ -1855,12 +1916,13 @@ class MainWindow(QMainWindow, WindowMixin):
         if self.filePath is None:
             return
 
-        shapes = getShapesFromCsvFaceSet(self.filePath, self.csvFilePath, self.subject_dictionary)
+        shapes = getShapesFromCsvFaceSet(self.filePath, self.csvFilePath, self.subject_dictionary,
+                                         self.path_to_id_dictionary)
         if not shapes:
             self.saved_label_exist = False
             return
         for shape in shapes:
-            self.drawPoints([(shape[0], shape[1]), (shape[2], shape[3])], shape[4], shape[5])
+            self.drawPoints([(shape[0], shape[1]), (shape[2], shape[3])], shape[4],isAuto=False)
 
     def loadCsvByFilename(self, csvPath):
         if self.filePath is None:
@@ -1888,7 +1950,7 @@ class MainWindow(QMainWindow, WindowMixin):
     def toogleDrawSquare(self):
         self.canvas.setDrawingShapeToSquare(self.drawSquaresOption.isChecked())
 
-    def drawPoints(self, points, label=None, drawingFlag=0):
+    def drawPoints(self, points, label=None, drawingFlag=0,isAuto = True):
 
         for i in range(len(points) // 2):
             p1x, p1y = points[2 * i]
@@ -1910,6 +1972,8 @@ class MainWindow(QMainWindow, WindowMixin):
             shape.drawingFlag = drawingFlag
             self.canvas.current = shape
             self.canvas.finalise()
+            if not isAuto :
+                self.setClean()
 
     def preProcessingWithPath(self):
         self.getPreProcessPath()
@@ -1924,9 +1988,8 @@ class MainWindow(QMainWindow, WindowMixin):
             if os.path.exists('embs.npy'):
                 self.embsDict = np.load('embs.npy', allow_pickle='TRUE').item()
             imagesPath = self.scanAllImages(path)
-            l = len(imagesPath)
-            i = 0
             for p in imagesPath:
+                i = imagesPath.index(p)
                 basename = os.path.basename(os.path.splitext(p)[0])
                 filedir = p.split(basename)[0].split(os.path.sep)[-2:-1][0]
                 if filedir == 'multi':
@@ -1941,11 +2004,12 @@ class MainWindow(QMainWindow, WindowMixin):
                 if len(embs) == 0:
                     continue
                 boxes = np.int16(np.round(boxes[0][0]))
-                self.embsDict[
-                    p + '.' + str(boxes[0]) + '.' + str(boxes[1]) + '.' + str(boxes[2]) + '.' + str(boxes[3])] = [embs,
-                                                                                                                  boxes,
-                                                                                                                  filedir]
-                i += 1
+                id = self.path_to_id_dictionary[p]
+                id = 100 * id + 1
+                self.embsDict[id] = [embs, boxes, filedir]
+                stdout.write("\r" + str(i) + "/" + str(len(imagesPath)))
+                stdout.flush()
+            stdout.write("\n")
             print('successfully done!')
             np.save('embs.npy', self.embsDict)
 
@@ -1959,22 +2023,25 @@ class MainWindow(QMainWindow, WindowMixin):
         else:
 
             self.make_subject_dictionary()
+            self.make_path_id_dictionary()
             print('Getting embedings from : ' + csvPath + ' please wait')
             if os.path.exists('embs.npy'):
                 self.embsDict = np.load('embs.npy', allow_pickle='TRUE').item()
             lines = []
             with open(csvPath, mode='r', encoding='utf-8') as r:
                 reader = csv.DictReader(r, oneCsvFile.FIELD_NAMES)
-
+                embkeys = self.embsDict.keys()
                 for row in reader:
-                    if row['getembs'] is None:
-                        row['getembs'] = '0'
-                    if row['drawingFlag'] is None:
-                        row['drawingFlag'] = '2'
-                    if int(row['getembs']):
-                        lines.append(row)
-                        continue
-                    row_path = row['path']
+
+                    id = int(row['path'])
+                    row_path = self.path_dictionary[id]
+                    if self.getembs_dictionary[id] is not None:
+                        if self.getembs_dictionary[id]:
+                            lines.append(row)
+                            continue
+
+                    self.getembs_dictionary[id] = 1
+
                     if not os.path.isfile(row_path):
                         print('there is no image in given path : ' + row_path)
                         continue
@@ -1982,11 +2049,11 @@ class MainWindow(QMainWindow, WindowMixin):
 
                     shape = [int(row['xmin']), int(row['ymin']), int(row['xmax']), int(row['ymax'])]
 
-                    img = image[shape[1] - 5:shape[3] + 5, shape[0] - 5:shape[2] + 5]
+                    img = cropImage(image, shape, thresh=10, )
+
                     try:
                         boxes, embs = self.box_recommender.detector.detectWithLandMark(img,
                                                                                        self.box_recommender.detector.detector)
-                        row['getembs'] = 1
                         lines.append(row)
                     except:
                         lines.append(row)
@@ -1994,28 +2061,107 @@ class MainWindow(QMainWindow, WindowMixin):
                     if len(embs) == 0:
                         continue
                     shape = np.array(shape).astype(np.int16)
-                    self.embsDict[
-                        row_path + '.' + row['xmin'] + '.' + row['ymin'] + '.' + row['xmax'] + '.' + row['ymax']] = [
-                        embs, shape, row['id']]
-
+                    for i in range(100):
+                        if id * 100 + i not in embkeys:
+                            id = id * 100 + i
+                            break
+                    self.embsDict[id] = [embs, shape, self.subject_dictionary[int(row['id'])]]
             with open(csvPath, mode='w', newline='', encoding='utf-8') as f:
                 writer = csv.DictWriter(f, oneCsvFile.FIELD_NAMES)
                 writer.writerows(lines)
+            self.update_getembeding()
 
             print('successfully done!')
             np.save('embs.npy', self.embsDict)
+
+    def make_path_id_dictionary(self):
+        dirPath = os.path.dirname(self.preProcessPath)
+        imagespath = dirPath + '/imagespath.csv'
+        with open(imagespath, mode='r', encoding='utf-8') as r:
+            reader = csv.DictReader(r, ['id', 'path', ])
+            for row in reader:
+                try:
+                    self.path_dictionary[int(row['id'])] = os.path.normpath(row['path'])
+                except:
+                    continue
+        self.path_to_id_dictionary = {self.path_dictionary[k]: k for k in self.path_dictionary}
+
+        with open(imagespath, mode='r', encoding='utf-8') as r:
+            reader = csv.DictReader(r, ['id', 'path', 'getembs'])
+            for row in reader:
+                try:
+                    if row['getembs'] is None:
+                        row['getembs'] = 0
+                    self.getembs_dictionary[int(row['id'])] = int(row['getembs'])
+                except:
+                    continue
+
+    def update_subjects(self, newName):
+        dirPath = os.path.dirname(self.preProcessPath)
+        subjectPath = dirPath + '/subjects.csv'
+        ids = list(self.subject_dictionary.keys())
+        names = list(self.subject_name_to_id_dictionary.keys())
+        if newName in names:
+            ans = self.sameNameExist(newName)
+            if ans == QMessageBox.No:
+                return
+
+        row = {}
+        id = np.max(ids) + 1
+        row['id'] = id
+        row['name'] = newName
+        with open(subjectPath, mode='a', encoding='utf-8',newline='') as f:
+            writer = csv.DictWriter(f, ['id', 'name'])
+            writer.writerow(row)
+        self.make_subject_dictionary()
+
+    def update_path_id(self, file_path):
+        dirPath = os.path.dirname(self.preProcessPath)
+        imagespath = dirPath + '/imagespath.csv'
+        ids = list(self.path_dictionary.keys())
+        paths = list(self.path_to_id_dictionary.keys())
+        row = {}
+        if 'labelImg-master' in file_path:
+            file_path = file_path.split('labelImg-master')[-1][1:]
+
+        if file_path not in paths:
+            id = np.max(ids) + 1
+            row['id'] = id
+            row['path'] = file_path
+            row['getembs'] = 0
+            with open(imagespath, mode='a', encoding='utf-8',newline='') as f:
+                writer = csv.DictWriter(f, ['id', 'path', 'getembs'])
+                writer.writerow(row)
+            self.path_to_id_dictionary[row['path']] = int(row['id'])
+            self.path_dictionary[int(row['id'])] = os.path.normpath(row['path'])
+            self.getembs_dictionary[int(row['id'])] = 0
+
+    def update_getembeding(self):
+        dirPath = os.path.dirname(self.preProcessPath)
+        imagespath = dirPath + '/imagespath.csv'
+        lines = []
+        with open(imagespath, mode='r', encoding='utf-8') as r:
+            reader = csv.DictReader(r, ['id', 'path', 'getembs'])
+            for row in reader:
+                row['getembs'] = self.getembs_dictionary[int(row['id'])]
+                lines.append(row)
+        with open(imagespath, mode='w', newline='', encoding='utf-8',) as f:
+            writer = csv.DictWriter(f, ['id', 'path', 'getembs'])
+            writer.writerows(lines)
 
     def make_subject_dictionary(self, ):
         dirPath = os.path.dirname(self.preProcessPath)
         subjectPath = dirPath + '/subjects.csv'
 
-        with open(subjectPath, mode='r', encoding='utf-8') as r:
+        with open(subjectPath, mode='r', encoding='utf-8', newline='') as r:
             reader = csv.DictReader(r, ['id', 'name'])
             for row in reader:
                 try:
                     self.subject_dictionary[int(row['id'])] = row['name']
                 except:
                     continue
+        self.subject_dictionary[-1] = 'unknown'
+        self.subject_dictionary[-2] = ''
         self.subject_name_to_id_dictionary = {self.subject_dictionary[k]: k for k in self.subject_dictionary}
 
     def showWindow(self, indexes):
@@ -2086,6 +2232,7 @@ class MainWindow(QMainWindow, WindowMixin):
             text = item.text()
             if self.newId is not None:
                 text = self.newId[0]
+                self.update_subjects(text)
         else:
             text = self.clickedItem
         if text is not None:

@@ -3,6 +3,7 @@ from libs.ustr import ustr
 import hashlib
 import re
 import sys
+import numpy as np
 
 try:
     from PyQt5.QtGui import *
@@ -115,3 +116,10 @@ def convertPointsToXY(shapePoints):
     points.append(round(shapePoints[2].x()))
     points.append(round(shapePoints[2].y()))
     return points
+
+
+def cropImage(image, box, thresh=0):
+    imshape = np.array(image).shape
+    out = image[max(0, box[1] - thresh):min(box[3] + thresh, imshape[1]),
+          max(box[0] - thresh, 0):min(box[2] + thresh , imshape[0])]
+    return out

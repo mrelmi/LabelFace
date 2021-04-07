@@ -210,11 +210,15 @@ class LabelFile(object):
 
         return (int(xmin), int(ymin), int(xmax), int(ymax))
 
-    def saveOneCsvFile(self, shapes, imagePath, imageData,subject_dictionary):
+    def saveOneCsvFile(self, shapes, imagePath, imageData,subject_dictionary,path_to_id_dictionary):
 
         imgFolderPath = os.path.dirname(imagePath)
         imgFolderName = os.path.split(imgFolderPath)[-1]
         imgFileName = os.path.basename(imagePath)
+        if 'labelImg-master' in imagePath:
+            imagePath = imagePath.split('labelImg-master')[-1][1:]
+
+        id = path_to_id_dictionary[imagePath]
         if isinstance(imageData, QImage):
             image = imageData
         else:
@@ -226,8 +230,8 @@ class LabelFile(object):
         writer = OneFileWriter(imgFolderName, imgFileName,
                                imageShape, localImgPath=imagePath)
 
-        writer.save(shapes, imagePath, subject_dictionary)
+        writer.save(shapes, id, subject_dictionary=subject_dictionary)
 
-def getShapesFromCsvFaceSet(imagePath, csvFilePath=TARGET_FILE,subject_dictionary={}):
+def getShapesFromCsvFaceSet(imagePath, csvFilePath=TARGET_FILE,subject_dictionary=None,path_to_id=None):
     reader = OneFileReader()
-    return reader.loadShapes(imagePath, csvFilePath,subjects_dictionary)
+    return reader.loadShapes(imagePath, csvFilePath,subject_dictionary,path_to_id)

@@ -132,6 +132,10 @@ class FaceDetector:
         embs = self.arcface.get_feature(crops)
         return boxes, embs
 
+    def getEmbedings(self,image,):
+        embs = self.arcface.get_feature(image)
+        return embs
+
     def estimate_norm(self, lmk, image_size=112):
         assert lmk.shape == (5, 2)
         tform = trans.SimilarityTransform()
