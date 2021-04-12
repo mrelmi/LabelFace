@@ -4,7 +4,7 @@ from libs.constants import DEFAULT_ENCODING
 import csv
 from libs.utils import convertPointsToXY
 
-TARGET_FILE = 'faceset.csv'
+TARGET_FILE = 'localfaceset.csv'
 FIELD_NAMES = ['path', 'xmin', 'ymin', 'xmax', 'ymax', 'id']
 
 
@@ -20,35 +20,35 @@ class OneFileWriter:
 
         self.fieldnames = FIELD_NAMES
 
-    def save(self, shapes, pathid, targetFile=TARGET_FILE, subject_dictionary=None):
-        self.deleteExistentImagepath(pathid, targetFile)
-        with open(targetFile, mode='a', newline='', encoding="utf-8") as f:
-            writer = csv.DictWriter(f, self.fieldnames)
-            i = 0
-            for shape in shapes:
-                p = []
-                p.append(round(shape.points[0].x()))
-                p.append(round(shape.points[0].y()))
-                p.append(round(shape.points[2].x()))
-                p.append(round(shape.points[2].y()))
-                id = subject_dictionary[shape.label]
-                writer.writerow(
-                    {'path': pathid, 'xmin': p[0], 'ymin': p[1], 'xmax': p[2], 'ymax': p[3], 'id': id, })
-                i += 1
-
-    def deleteExistentImagepath(self, pathid, targetFile):
+    def save(self, shapes, targetFile=TARGET_FILE, path_dictionary=None):
         lines = []
+        path = None
+        for shape in shapes:
+            path = path_dictionary[shape.id]
+            break
         if not os.path.exists(targetFile):
             return
         with open(targetFile, mode='r', encoding='utf-8') as r:
             reader = csv.DictReader(r, self.fieldnames)
             for row in reader:
-                if int(row['path']) != pathid:
+                if os.path.normpath(row['path']) != path:
                     lines.append(row)
+                else:
+                    for shape in shapes:
+                        p = []
+                        p.append(round(shape.points[0].x()))
+                        p.append(round(shape.points[0].y()))
+                        p.append(round(shape.points[2].x()))
+                        p.append(round(shape.points[2].y()))
+
+                        lines.append(
+                            {'path': path, 'xmin': p[0], 'ymin': p[1], 'xmax': p[2], 'ymax': p[3],
+                             'id': shape.userid, })
         os.remove(targetFile)
-        with open(targetFile, mode='a', newline='', encoding='utf-8') as f:
+        with open(targetFile, mode='w', newline='', encoding='utf-8') as f:
             writer = csv.DictWriter(f, self.fieldnames)
             writer.writerows(lines)
+
 
 
 class OneFileReader:
@@ -57,18 +57,18 @@ class OneFileReader:
 
         self.fieldnames = FIELD_NAMES
 
-    def loadShapes(self, imagePath, targetFile=TARGET_FILE, subjects_dictionary=None, path_to_id=None):
+    def loadShapes(self, imagePath, targetFile=TARGET_FILE,  ):
         shapes = []
         if not os.path.exists(targetFile):
             return
         if 'labelImg-master' in imagePath:
-            imagePath = imagePath.split('labelImg-master')[-1][1:]
-        pathid = int(path_to_id[imagePath])
+            imagePath = os.path.normpath(imagePath.split('labelImg-master')[-1][1:])
+
         with open(targetFile, mode='r', encoding='utf-8') as r:
             reader = csv.DictReader(r, self.fieldnames)
+            i = 0
             for row in reader:
+                if row['path'] == imagePath:
 
-                if int(row['path']) == pathid:
-                    name = subjects_dictionary[int(row['id'])]
-                    shapes.append([int(row['xmin']), int(row['ymin']), int(row['xmax']), int(row['ymax']), name, ])
+                    shapes.append([int(row['xmin']), int(row['ymin']), int(row['xmax']), int(row['ymax']), row['id']])
         return shapes

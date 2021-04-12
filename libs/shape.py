@@ -45,7 +45,8 @@ class Shape(object):
         self.selected = False
         self.difficult = difficult
         self.paintLabel = paintLabel
-        self.id = -1
+        self.pathid = -1
+        self.userid = -1
 
         # if user create shape this flag = 1 and if edit the automated shape =2 and for automatedShape = 0
         self.drawingFlag = -1

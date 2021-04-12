@@ -1053,42 +1053,29 @@ class MainWindow(QMainWindow, WindowMixin):
                 self.labelList.item(i).setCheckState(2)
 
     def getEmbedingsFromShapes(self):
-        if os.path.exists('embs.npy'):
-            self.embsDict = np.load('embs.npy', allow_pickle=True).item()
+        if os.path.exists('localembs.npy'):
+            self.embsDict = np.load('localembs.npy', allow_pickle=True).item()
+
+        newid = len(list(self.embsDict.keys()))
         filePath = self.filePath
         image = Image.open(filePath)
         image = np.array(image)
-        id = -1
-        if filePath not in list(self.path_to_id_dictionary.keys()):
-            if 'labelImg-master' in filePath:
-                filePath = filePath.split('labelImg-master')[-1][1:]
-                if filePath not in list(self.path_to_id_dictionary.keys()):
-                    return
-                id = self.path_to_id_dictionary[filePath]
-        else:
-            id = self.path_to_id_dictionary[filePath]
-        self.getembs_dictionary[id] = 1
 
         # points = convertPointsToXY(self.canvas.selectedShape.points)
-        i = 0
         for shape in self.canvas.shapes:
-            try:
-                points = []
-                points.append(round(shape.points[0].x()))
-                points.append(round(shape.points[0].y()))
-                points.append(round(shape.points[2].x()))
-                points.append(round(shape.points[2].y()))
-                crop = cropImage(image, points, thresh=5)
-                boxes, emb = self.box_recommender.detector.detectWithLandMark(crop,
-                                                                              self.box_recommender.detector.detector)
+            points = []
+            points.append(round(shape.points[0].x()))
+            points.append(round(shape.points[0].y()))
+            points.append(round(shape.points[2].x()))
+            points.append(round(shape.points[2].y()))
+            crop = cropImage(image, points, thresh=10)
+            boxes, emb = self.box_recommender.detector.detectWithLandMark(crop,
+                                                                          self.box_recommender.detector.detector)
 
-                self.embsDict[id * 100 + i] = [emb, points, shape.label]
-                i += 1
+            self.embsDict[newid] = [emb, points, shape.label]
+            newid += 1
 
-            except:
-                continue
-
-        np.save('embs.npy', self.embsDict)
+        np.save('localembs.npy', self.embsDict)
         self.update_getembeding()
 
     def labelSelectionChanged(self):
@@ -1109,7 +1096,7 @@ class MainWindow(QMainWindow, WindowMixin):
         points.append(round(self.canvas.selectedShape.points[0].y()))
         points.append(round(self.canvas.selectedShape.points[2].x()))
         points.append(round(self.canvas.selectedShape.points[2].y()))
-        crop = image[points[1] - 5:points[3] + 5, points[0] - 5:points[2] + 5]
+        crop = cropImage(image, points, 10)
         emb, boxes = None, None
         try:
             boxes, emb = self.box_recommender.detector.detectWithLandMark(crop,
@@ -1117,16 +1104,13 @@ class MainWindow(QMainWindow, WindowMixin):
         except:
             print("recommender cant find boxes on this shape")
         indexes = []
-        k = -1
 
-        thresh = 0.1
-        secondThresh = 0.7
         try:
             thresh = float(self.similarityThreshText.text())
             secondThresh = float(self.secondThreshText.text())
             if 100 > thresh > 1:
                 thresh = thresh / 100.
-            if 100 > secondThresh > 1 :
+            if 100 >= secondThresh > 1:
                 secondThresh = secondThresh / 100
 
         except:
@@ -1134,20 +1118,24 @@ class MainWindow(QMainWindow, WindowMixin):
             secondThresh = 0.7
 
         if emb is not None and os.path.exists('embs.npy'):
-            self.embsDict = np.load('embs.npy', allow_pickle=True).item()
-            j = 0
-            for key in list(self.embsDict.keys()):
-                key_emb, key_box, key_name = self.embsDict[key]
-                id = key // 100
-                p = self.path_dictionary[id]
-                if not os.path.exists(p): continue
-                a = cosine_similarity(emb, key_emb)
+            self.embsDict.update(np.load('embs.npy', allow_pickle=True).item())
 
-                if a[0][0] > thresh:
-                    indexes.append((a[0][0], key_box, p, key_name))
-                    if a[0][0] > secondThresh:
-                        j += 1
-                if j == 3: break
+        if emb is not None and os.path.exists('localembs.npy'):
+            self.embsDict.update(np.load('embs.npy', allow_pickle=True).item())
+        j = 0
+        for key in list(self.embsDict.keys()):
+            key_emb, key_box, key_name = self.embsDict[key]
+            id = key
+            p = self.path_dictionary[id]
+            if not os.path.exists(p): continue
+            a = cosine_similarity(emb, key_emb)
+
+            if a[0][0] >= thresh:
+                indexes.append((a[0][0], key_box, p, key_name))
+                if a[0][0] >= secondThresh:
+                    j += 1
+            if j == 3: break
+
         self.w = QDialog()
         self.buttons = []
         self.labels = []
@@ -1832,7 +1820,14 @@ class MainWindow(QMainWindow, WindowMixin):
         yes, no = QMessageBox.Yes, QMessageBox.No
         id = self.subject_name_to_id_dictionary[name]
         msg = u'there is {} in subjects with id = {} do you want save new id ? '.format(name, id)
-        return QMessageBox.warning(self, u'Attention', msg, yes | no)
+        ans = QMessageBox.warning(self, u'Attention', msg, no | yes)
+        if ans == yes:
+            ans = QMessageBox.warning(self, u'Gender', u'male ?', yes | no)
+            if ans == yes:
+                return 1
+            else:
+                return 0
+        return -1
 
     def errorMessage(self, title, message):
         return QMessageBox.critical(self, title,
@@ -1935,8 +1930,7 @@ class MainWindow(QMainWindow, WindowMixin):
         if self.filePath is None:
             return
 
-        shapes = getShapesFromCsvFaceSet(self.filePath, self.csvFilePath, self.subject_dictionary,
-                                         self.path_to_id_dictionary)
+        shapes = getShapesFromCsvFaceSet(self.filePath)
         if not shapes:
             self.saved_label_exist = False
             return
@@ -1969,7 +1963,7 @@ class MainWindow(QMainWindow, WindowMixin):
     def toogleDrawSquare(self):
         self.canvas.setDrawingShapeToSquare(self.drawSquaresOption.isChecked())
 
-    def drawPoints(self, points, label=None, drawingFlag=0, isAuto=True):
+    def drawPoints(self, points, labelid=-1, drawingFlag=0, isAuto=True):
 
         for i in range(len(points) // 2):
             p1x, p1y = points[2 * i]
@@ -1985,6 +1979,7 @@ class MainWindow(QMainWindow, WindowMixin):
             shape.addPoint(p3)
             shape.addPoint(p4)
             shape.fill = True
+            label = self.subject_dictionary[labelid]
             shape.label = label
             if drawingFlag == 0:
                 shape.recommendedPoints = [p1, p2, p3, p4]
@@ -2032,9 +2027,60 @@ class MainWindow(QMainWindow, WindowMixin):
             print('successfully done!')
             np.save('embs.npy', self.embsDict)
 
+    def write_embdings(self, csvPath, embspath):
+        print('Getting embedings from : ' + csvPath + ' please wait')
+        if os.path.exists(embspath):
+            self.embsDict.update(np.load(embspath, allow_pickle='TRUE').item())
+        lines = []
+        with open(csvPath, mode='r', encoding='utf-8') as r:
+            reader = csv.DictReader(r, oneCsvFile.FIELD_NAMES)
+            embkeys = self.embsDict.keys()
+            id = 0
+            for row in reader:
+
+                row_path = row['path']
+                if self.getembs_dictionary[id] is not None:
+                    if self.getembs_dictionary[id]:
+                        lines.append(row)
+                        continue
+
+                if not os.path.isfile(row_path):
+                    print('there is no image in given path : ' + row_path)
+                    continue
+
+                self.getembs_dictionary[id] = 1
+
+                image = np.array(Image.open(row_path))
+
+                shape = [int(row['xmin']), int(row['ymin']), int(row['xmax']), int(row['ymax'])]
+
+                img = cropImage(image, shape, thresh=10, )
+
+                try:
+                    boxes, embs = self.box_recommender.detector.detectWithLandMark(img,
+                                                                                   self.box_recommender.detector.detector)
+                    lines.append(row)
+                except:
+                    lines.append(row)
+                    continue
+                if len(embs) == 0:
+                    continue
+                shape = np.array(shape).astype(np.int16)
+
+                self.embsDict[id] = [embs, shape, self.subject_dictionary[int(row['id'])]]
+                id += 1
+
+        with open(csvPath, mode='w', newline='', encoding='utf-8') as f:
+            writer = csv.DictWriter(f, oneCsvFile.FIELD_NAMES)
+            writer.writerows(lines)
+
+        print('successfully done!')
+        np.save(embspath, self.embsDict)
+
     def preProcessingWithCsv(self):
         self.getPreProcessCsvPath()
         csvPath = self.preProcessPath
+        dirname = os.path.dirname(csvPath)
         if csvPath == '':
             self.errorMessage('None path', 'please choose a path ')
         elif csvPath.split('.')[-1] != 'csv':
@@ -2043,97 +2089,44 @@ class MainWindow(QMainWindow, WindowMixin):
 
             self.make_subject_dictionary()
             self.make_path_id_dictionary()
-            print('Getting embedings from : ' + csvPath + ' please wait')
-            if os.path.exists('embs.npy'):
-                self.embsDict = np.load('embs.npy', allow_pickle='TRUE').item()
-            lines = []
-            with open(csvPath, mode='r', encoding='utf-8') as r:
-                reader = csv.DictReader(r, oneCsvFile.FIELD_NAMES)
-                embkeys = self.embsDict.keys()
-                for row in reader:
+            self.write_embdings(csvPath, 'embs.npy')
+            self.write_embdings('localfacesset.csv', 'localembs.npy')
 
-                    id = int(row['path'])
-                    row_path = self.path_dictionary[id]
-                    if self.getembs_dictionary[id] is not None:
-                        if self.getembs_dictionary[id]:
-                            lines.append(row)
-                            continue
-
-                    self.getembs_dictionary[id] = 1
-
-                    if not os.path.isfile(row_path):
-                        print('there is no image in given path : ' + row_path)
-                        continue
-                    image = np.array(Image.open(row_path))
-
-                    shape = [int(row['xmin']), int(row['ymin']), int(row['xmax']), int(row['ymax'])]
-
-                    img = cropImage(image, shape, thresh=10, )
-
-                    try:
-                        boxes, embs = self.box_recommender.detector.detectWithLandMark(img,
-                                                                                       self.box_recommender.detector.detector)
-                        lines.append(row)
-                    except:
-                        lines.append(row)
-                        continue
-                    if len(embs) == 0:
-                        continue
-                    shape = np.array(shape).astype(np.int16)
-                    for i in range(100):
-                        if id * 100 + i not in embkeys:
-                            id = id * 100 + i
-                            break
-                    self.embsDict[id] = [embs, shape, self.subject_dictionary[int(row['id'])]]
-            with open(csvPath, mode='w', newline='', encoding='utf-8') as f:
-                writer = csv.DictWriter(f, oneCsvFile.FIELD_NAMES)
-                writer.writerows(lines)
-            self.update_getembeding()
-
-            print('successfully done!')
-            np.save('embs.npy', self.embsDict)
+    def read_paths(self, faceset_path, j=0):
+        with open(faceset_path, mode='r', encoding='utf-8') as r:
+            reader = csv.DictReader(r, oneCsvFile.FIELD_NAMES)
+            i = j
+            for row in reader:
+                self.path_dictionary[i] = os.path.normpath(row['path'])
+                self.getembs_dictionary[i] = 0
+                i += 1
+        return i
 
     def make_path_id_dictionary(self):
         dirPath = os.path.dirname(self.preProcessPath)
-        imagespath = dirPath + '/imagespath.csv'
-        if not os.path.isfile:
-            self.errorMessage('imagespath', 'please put the imagespath.csv on ' + dirPath + '')
-            return
-        with open(imagespath, mode='r', encoding='utf-8') as r:
-            reader = csv.DictReader(r, ['id', 'path', ])
-            for row in reader:
-                try:
-                    self.path_dictionary[int(row['id'])] = os.path.normpath(row['path'])
-                except:
-                    continue
+        localPath = 'localsubjects.csv'
+        i = self.read_paths(self.preProcessPath)
+        self.read_paths(localPath, i)
         self.path_to_id_dictionary = {self.path_dictionary[k]: k for k in self.path_dictionary}
-
-        with open(imagespath, mode='r', encoding='utf-8') as r:
-            reader = csv.DictReader(r, ['id', 'path', 'getembs'])
-            for row in reader:
-                try:
-                    if row['getembs'] is None:
-                        row['getembs'] = 0
-                    self.getembs_dictionary[int(row['id'])] = int(row['getembs'])
-                except:
-                    continue
 
     def update_subjects(self, newName):
         dirPath = os.path.dirname(self.preProcessPath)
-        subjectPath = dirPath + '/subjects.csv'
+        subjectPath = 'localsubjects.csv'
         ids = list(self.subject_dictionary.keys())
         names = list(self.subject_name_to_id_dictionary.keys())
         if newName in names:
             ans = self.sameNameExist(newName)
-            if ans == QMessageBox.No:
+            if ans == -1:
                 return
-
+        else:
+            ans = QMessageBox.warning(self, u'Gender', u'male ?', QMessageBox.Yes | QMessageBox.No)
         row = {}
         id = np.max(ids) + 1
         row['id'] = id
         row['name'] = newName
+        row['gender'] = ans
         with open(subjectPath, mode='a', encoding='utf-8', newline='') as f:
-            writer = csv.DictWriter(f, ['id', 'name'])
+            writer = csv.DictWriter(f, ['id', 'name', 'gender'])
             writer.writerow(row)
         self.make_subject_dictionary()
 
@@ -2171,11 +2164,10 @@ class MainWindow(QMainWindow, WindowMixin):
             writer = csv.DictWriter(f, ['id', 'path', 'getembs'])
             writer.writerows(lines)
 
-    def make_subject_dictionary(self, ):
-        dirPath = os.path.dirname(self.preProcessPath)
-        subjectPath = dirPath + '/subjects.csv'
+    def read_subjects(self, subjectPath):
         if not os.path.isfile:
-            self.errorMessage('Subjects', 'please put the subjects.csv on ' + dirPath + '')
+            self.errorMessage('Subjects',
+                              'please put the +' + os.path.basename(subjectPath) + 'on' + os.path.dirname(subjectPath))
             return
         with open(subjectPath, mode='r', encoding='utf-8', newline='') as r:
             reader = csv.DictReader(r, ['id', 'name'])
@@ -2183,7 +2175,18 @@ class MainWindow(QMainWindow, WindowMixin):
                 try:
                     self.subject_dictionary[int(row['id'])] = row['name']
                 except:
+                    print('csvReader cant convert this row of subjects : ' + str(row))
                     continue
+
+    def make_subject_dictionary(self, ):
+        dirPath = os.path.dirname(self.preProcessPath)
+        subjectPath = dirPath + '/subjects.csv'
+        localPath = '/localsubjects.csv'
+        if not os.path.isfile(localPath):
+            open(localPath, 'x')
+
+        self.read_subjects(subjectPath)
+        self.read_subjects(localPath)
         self.subject_dictionary[-1] = 'unknown'
         self.subject_dictionary[-2] = ''
         self.subject_name_to_id_dictionary = {self.subject_dictionary[k]: k for k in self.subject_dictionary}
