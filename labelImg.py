@@ -90,7 +90,7 @@ class MainWindow(QMainWindow, WindowMixin):
         super(MainWindow, self).__init__()
         self.setWindowTitle(__appname__)
 
-        self.csvFilePath = 'faceset.csv'
+        self.csvFilePath = 'localfaceset.csv'
         self.subject_dictionary = {}
         self.subject_name_to_id_dictionary = {}
         self.path_dictionary = {}
@@ -153,6 +153,15 @@ class MainWindow(QMainWindow, WindowMixin):
         self.secondThreshLabel = QLabel()
         self.secondThreshLabel.setText("second threshold :")
 
+        self.prepathText = QLineEdit()
+        self.prepathLabel = QLabel()
+        self.prepathLabel.setText("pre of data path :")
+        self.prepathButton = QPushButton()
+        self.prepathButton.setStyleSheet('QPushButton {background-color: #6FC1DA; color: green;}')
+        self.prepathButton.setText('Get prepath')
+        self.prepathButton.clicked.connect(self.getprepath)
+        self.prepathText.setText(settings.get(SETTING_PREPATH))
+
         self.similarityLayout = QHBoxLayout()
         self.similarityLayout.addWidget(self.similarityThreshLabel)
         self.similarityLayout.addWidget(self.similarityThreshText)
@@ -160,6 +169,11 @@ class MainWindow(QMainWindow, WindowMixin):
         self.secondThreshLayout = QHBoxLayout()
         self.secondThreshLayout.addWidget(self.secondThreshLabel)
         self.secondThreshLayout.addWidget(self.secondThreshText)
+
+        self.prepathLayout = QHBoxLayout()
+        self.prepathLayout.addWidget(self.prepathLabel)
+        self.prepathLayout.addWidget(self.prepathText)
+        self.prepathLayout.addWidget(self.prepathButton)
 
         self.recomImageSizeText = QLineEdit()
         self.recomImageSizeLabel = QLabel()
@@ -186,7 +200,7 @@ class MainWindow(QMainWindow, WindowMixin):
         self.clickedItem = None
         self.image_size = 200
         self.image_pad = 10
-        self.newId = None
+        self.newName = None
         self.recomImages = []
 
         self.recomLayout.addWidget(self.w)
@@ -224,6 +238,13 @@ class MainWindow(QMainWindow, WindowMixin):
         preProcessTextContainer = QWidget()
         preProcessTextContainer.setLayout(preProcessLayout)
 
+        self.maskCheckBox = QCheckBox('mask')
+        self.maskCheckBox.setChecked(False)
+        self.maskCheckBox.stateChanged.connect(self.maskChanged)
+        maskContainer = QVBoxLayout()
+        maskContainer.addWidget(self.maskCheckBox)
+        featurecontainer = QWidget()
+        featurecontainer.setLayout(maskContainer)
         # Create a widget for using default label
         self.useDefaultLabelCheckbox = QCheckBox(getStr('useDefaultLabel'))
         self.useDefaultLabelCheckbox.setChecked(False)
@@ -272,23 +293,29 @@ class MainWindow(QMainWindow, WindowMixin):
         self.recomDock.setObjectName("recomms")
         self.recomDock.setWidget(recomContainer)
 
+        self.featuresDock = QDockWidget("Features", self)
+        self.featuresDock.setWidget(featurecontainer)
+
         recomSizeContainer = QWidget()
         recomSizeContainer.setLayout(self.recomSizeLayout)
         similarityContainer = QWidget()
         similarityContainer.setLayout(self.similarityLayout)
         secondThreshContainer = QWidget()
         secondThreshContainer.setLayout(self.secondThreshLayout)
+        prepathContainer = QWidget()
+        prepathContainer.setLayout(self.prepathLayout)
         recomPadContainer = QWidget()
         recomPadContainer.setLayout(self.recomPadLayout)
         configs = QVBoxLayout()
         configs.addWidget(recomSizeContainer)
         configs.addWidget(similarityContainer)
         configs.addWidget(secondThreshContainer)
-        configs.addWidget(recomPadContainer)
+        # configs.addWidget(recomPadContainer)
+        configs.addWidget(prepathContainer)
         confWidget = QWidget()
         confWidget.setLayout(configs)
         self.similarityThreshText.setText('0.2')
-        self.secondThreshText.setText('0.7')
+        self.secondThreshText.setText('1')
         self.recomImagePadText.setText('10')
         self.recomImageSizeText.setText('200')
         self.configDock = QDockWidget("Constants", self)
@@ -334,7 +361,7 @@ class MainWindow(QMainWindow, WindowMixin):
         self.addDockWidget(Qt.RightDockWidgetArea, self.configDock)
         self.filedock.setFeatures(QDockWidget.DockWidgetFloatable)
         self.addDockWidget(Qt.BottomDockWidgetArea, self.recomDock)
-
+        self.addDockWidget(Qt.BottomDockWidgetArea, self.featuresDock)
         self.dockFeatures = QDockWidget.DockWidgetClosable | QDockWidget.DockWidgetFloatable
         self.dock.setFeatures(self.dock.features() ^ self.dockFeatures)
 
@@ -876,6 +903,10 @@ class MainWindow(QMainWindow, WindowMixin):
             if filename:
                 self.loadFile(filename)
 
+    def maskChanged(self):
+        if self.canvas.selectedShape is not None:
+            self.canvas.selectedShape.mask = 1 if self.maskCheckBox.isChecked() else 0
+
     # Add chris
     def btnstate(self, item=None):
         """ Function to handle difficult examples
@@ -1021,12 +1052,13 @@ class MainWindow(QMainWindow, WindowMixin):
                     annotationFilePath += CSV_EXT
                 # self.labelFile.saveCsvFormat(annotationFilePath, shapes, self.filePath, self.imageData, self.labelHist,
                 #                              self.lineColor.getRgb(), self.fillColor.getRgb())
+                start, end = self.labelFile.saveOneCsvFile(self.canvas.shapes, self.filePath, self.imageData,
+                                                           self.path_dictionary, self.prepathText.text())
+                self.getEmbedingsFromShapes(start, end)
+                self.make_path_id_dictionary()
 
-                self.labelFile.saveOneCsvFile(self.canvas.shapes, self.filePath, self.imageData,
-                                              self.subject_name_to_id_dictionary, self.path_to_id_dictionary)
-                self.getEmbedingsFromShapes()
             elif self.labelFileFormat == LabelFileFormat.ONECSV:
-                self.labelFile.saveOneCsvFile(shapes, self.filePath, self.imageData)
+                self.labelFile.saveOneCsvFile(shapes, self.filePath, self.imageData, self.path_dictionary)
 
             else:
                 self.labelFile.save(annotationFilePath, shapes, self.filePath, self.imageData,
@@ -1052,16 +1084,23 @@ class MainWindow(QMainWindow, WindowMixin):
             else:
                 self.labelList.item(i).setCheckState(2)
 
-    def getEmbedingsFromShapes(self):
+    def getEmbedingsFromShapes(self, start, end):
         if os.path.exists('localembs.npy'):
-            self.embsDict = np.load('localembs.npy', allow_pickle=True).item()
-
-        newid = len(list(self.embsDict.keys()))
+            self.embsDict.update(np.load('localembs.npy', allow_pickle=True).item())
         filePath = self.filePath
+        if self.prepathText.text() in filePath:
+            filePath = filePath.split(self.prepathText.text())[-1][1:]
+        len_embs = len(list(self.embsDict.keys()))
+        newid = len_embs
+        if start > -1:
+            diff = end - start + 1
+            for key in range(end + self.len_faceset + 1, len_embs):
+                self.embsDict[key - diff] = self.embsDict[key]
+
+            newid = len_embs - diff
         image = Image.open(filePath)
         image = np.array(image)
 
-        # points = convertPointsToXY(self.canvas.selectedShape.points)
         for shape in self.canvas.shapes:
             points = []
             points.append(round(shape.points[0].x()))
@@ -1069,14 +1108,20 @@ class MainWindow(QMainWindow, WindowMixin):
             points.append(round(shape.points[2].x()))
             points.append(round(shape.points[2].y()))
             crop = cropImage(image, points, thresh=10)
-            boxes, emb = self.box_recommender.detector.detectWithLandMark(crop,
-                                                                          self.box_recommender.detector.detector)
-
-            self.embsDict[newid] = [emb, points, shape.label]
+            try:
+                boxes, emb = self.box_recommender.detector.detectWithLandMark(crop,
+                                                                              self.box_recommender.detector.detector)
+            except:
+                try:
+                    crop = cropImage(image, points, 20)
+                    crop = cv2.resize(crop, (112, 112, 3))
+                    emb = self.box_recommender.detector.detectWithLandMark(crop)
+                except:
+                    emb = None
+            self.embsDict[newid] = [emb, points, shape.userid]
             newid += 1
 
         np.save('localembs.npy', self.embsDict)
-        self.update_getembeding()
 
     def labelSelectionChanged(self):
         self.w.close()
@@ -1102,7 +1147,12 @@ class MainWindow(QMainWindow, WindowMixin):
             boxes, emb = self.box_recommender.detector.detectWithLandMark(crop,
                                                                           self.box_recommender.detector.detector)
         except:
-            print("recommender cant find boxes on this shape")
+            try:
+                crop = np.array(cropImage(image, points, 20))
+                crop = cv2.resize(crop, (112, 112, 3))
+                emb = self.box_recommender.detector.getEmbedings(crop)
+            except:
+                emb = None
         indexes = []
 
         try:
@@ -1115,26 +1165,27 @@ class MainWindow(QMainWindow, WindowMixin):
 
         except:
             thresh = 0.1
-            secondThresh = 0.7
-
-        if emb is not None and os.path.exists('embs.npy'):
-            self.embsDict.update(np.load('embs.npy', allow_pickle=True).item())
+            secondThresh = 1
 
         if emb is not None and os.path.exists('localembs.npy'):
-            self.embsDict.update(np.load('embs.npy', allow_pickle=True).item())
-        j = 0
-        for key in list(self.embsDict.keys()):
-            key_emb, key_box, key_name = self.embsDict[key]
-            id = key
-            p = self.path_dictionary[id]
-            if not os.path.exists(p): continue
-            a = cosine_similarity(emb, key_emb)
+            self.embsDict.update(np.load('localembs.npy', allow_pickle=True).item())
+            j = 0
+            for key in list(self.embsDict.keys()):
+                key_emb, key_box, key_name_id = self.embsDict[key]
+                id = key
+                p = self.path_dictionary[id]
+                if not os.path.exists(p):
+                    if len(self.prepathText.text()) > 2:
+                        p = os.path.join(os.path.normpath(self.prepathText.text()), p)
 
-            if a[0][0] >= thresh:
-                indexes.append((a[0][0], key_box, p, key_name))
-                if a[0][0] >= secondThresh:
-                    j += 1
-            if j == 3: break
+                if not os.path.exists(p) or key_emb is None or key_name_id == -1: continue
+                a = cosine_similarity(emb, key_emb)
+
+                if a[0][0] >= thresh:
+                    indexes.append((a[0][0], key_box, p, key_name_id))
+                    if a[0][0] >= secondThresh:
+                        j += 1
+                if j == 3: break
 
         self.w = QDialog()
         self.buttons = []
@@ -1148,20 +1199,20 @@ class MainWindow(QMainWindow, WindowMixin):
             self.image_pad = int(self.recomImagePadText.text())
         except:
             self.image_pad = 10
-        self.newId = None
+        self.newName = None
         self.recomLayout.addWidget(self.w)
         self.showWindow(indexes)
 
         if self.clickedItem is None:
             text = item.text()
-            if self.newId is not None:
-                text = self.newId[0]
+            if self.newName is not None:
+                text = self.newName[0]
                 self.update_subjects(text)
         else:
             text = self.clickedItem
         if text is not None:
             item.setText(text)
-            item.setBackground(QColor(0, 0, 0, 200))
+            item.setBackground(QColor(100, 0, 0, 100))
             self.setDirty()
             self.updateComboBox()
         item = self.currentItem()
@@ -1171,6 +1222,10 @@ class MainWindow(QMainWindow, WindowMixin):
             shape = self.itemsToShapes[item]
             # Add Chris
             self.diffcButton.setChecked(shape.difficult)
+        if self.canvas.selectedShape.mask:
+            self.maskCheckBox.setChecked(True)
+        else:
+            self.maskCheckBox.setChecked(False)
 
     def labelItemChanged(self, item):
         shape = self.itemsToShapes[item]
@@ -1317,16 +1372,7 @@ class MainWindow(QMainWindow, WindowMixin):
         self.preProcessPath = self.preProcessTextLine.text()
         self.make_path_id_dictionary()
         self.make_subject_dictionary()
-
-        if filePath not in list(self.path_to_id_dictionary.keys()):
-            if 'labelImg-master' in filePath:
-                filePath = filePath.split('labelImg-master')[-1][1:]
-                if filePath not in list(self.path_to_id_dictionary.keys()):
-                    self.update_path_id(filePath)
-
-            else:
-                self.update_path_id(filePath)
-
+        self.update_embeding()
         self.w.close()
         self.resetState()
         self.canvas.setEnabled(False)
@@ -1519,6 +1565,8 @@ class MainWindow(QMainWindow, WindowMixin):
             settings[SETTING_LAST_OPEN_DIR] = ''
         if self.preProcessPath and os.path.isfile(self.preProcessPath):
             settings[SETTING_PREPROCESSING_PATH] = self.preProcessPath
+        if self.prepathText.text() and os.path.isdir(self.prepathText.text()):
+            settings[SETTING_PREPATH] = self.prepathText.text()
         if self.csvFilePath and os.path.isfile(self.csvFilePath):
             settings[SETTING_CSVDATABASE] = self.csvFilePath
 
@@ -1580,6 +1628,17 @@ class MainWindow(QMainWindow, WindowMixin):
                 if isinstance(filename, (tuple, list)):
                     filename = filename[0]
             self.loadPascalXMLByFilename(filename)
+
+    def getprepath(self):
+        defaultdir = ''
+        if len(self.prepathText.text()) > 2:
+            defaultdir = self.prepathText.text()
+
+        targetDirPath = ustr(QFileDialog.getExistingDirectory(self,
+                                                              '%s - Open Directory' % __appname__,
+                                                              defaultdir,
+                                                              QFileDialog.ShowDirsOnly | QFileDialog.DontResolveSymlinks))
+        self.prepathText.setText(targetDirPath)
 
     def openDirDialog(self, _value=False, dirpath=None, silent=False):
         if not self.mayContinue():
@@ -1930,12 +1989,13 @@ class MainWindow(QMainWindow, WindowMixin):
         if self.filePath is None:
             return
 
-        shapes = getShapesFromCsvFaceSet(self.filePath)
+        shapes = getShapesFromCsvFaceSet(self.filePath, prepath=self.prepathText.text())
         if not shapes:
             self.saved_label_exist = False
             return
         for shape in shapes:
-            self.drawPoints([(shape[0], shape[1]), (shape[2], shape[3])], shape[4], isAuto=False)
+            self.drawPoints([(shape[0], shape[1]), (shape[2], shape[3])], shape[4], shape[5], drawingFlag=1,
+                            isAuto=False)
 
     def loadCsvByFilename(self, csvPath):
         if self.filePath is None:
@@ -1963,7 +2023,7 @@ class MainWindow(QMainWindow, WindowMixin):
     def toogleDrawSquare(self):
         self.canvas.setDrawingShapeToSquare(self.drawSquaresOption.isChecked())
 
-    def drawPoints(self, points, labelid=-1, drawingFlag=0, isAuto=True):
+    def drawPoints(self, points, labelid=-1, mask=0, drawingFlag=0, isAuto=True):
 
         for i in range(len(points) // 2):
             p1x, p1y = points[2 * i]
@@ -1981,8 +2041,11 @@ class MainWindow(QMainWindow, WindowMixin):
             shape.fill = True
             label = self.subject_dictionary[labelid]
             shape.label = label
+            shape.userid = labelid
             if drawingFlag == 0:
                 shape.recommendedPoints = [p1, p2, p3, p4]
+                shape.userid = -1
+            shape.mask = mask
             shape.drawingFlag = drawingFlag
             self.canvas.current = shape
             self.canvas.finalise()
@@ -2001,6 +2064,7 @@ class MainWindow(QMainWindow, WindowMixin):
             print('Getting embedings from : ' + path + ' please wait')
             if os.path.exists('embs.npy'):
                 self.embsDict = np.load('embs.npy', allow_pickle='TRUE').item()
+                self.len_faceset = len(list(self.embsDict.keys()))
             imagesPath = self.scanAllImages(path)
             for p in imagesPath:
                 i = imagesPath.index(p)
@@ -2027,28 +2091,20 @@ class MainWindow(QMainWindow, WindowMixin):
             print('successfully done!')
             np.save('embs.npy', self.embsDict)
 
-    def write_embdings(self, csvPath, embspath):
+    def write_embdings(self, csvPath, embspath, j=0):
         print('Getting embedings from : ' + csvPath + ' please wait')
         if os.path.exists(embspath):
             self.embsDict.update(np.load(embspath, allow_pickle='TRUE').item())
-        lines = []
         with open(csvPath, mode='r', encoding='utf-8') as r:
             reader = csv.DictReader(r, oneCsvFile.FIELD_NAMES)
-            embkeys = self.embsDict.keys()
-            id = 0
+            id = j
             for row in reader:
 
-                row_path = row['path']
-                if self.getembs_dictionary[id] is not None:
-                    if self.getembs_dictionary[id]:
-                        lines.append(row)
-                        continue
+                row_path = os.path.join(self.prepathText.text(), row['path'])
 
                 if not os.path.isfile(row_path):
                     print('there is no image in given path : ' + row_path)
                     continue
-
-                self.getembs_dictionary[id] = 1
 
                 image = np.array(Image.open(row_path))
 
@@ -2059,28 +2115,22 @@ class MainWindow(QMainWindow, WindowMixin):
                 try:
                     boxes, embs = self.box_recommender.detector.detectWithLandMark(img,
                                                                                    self.box_recommender.detector.detector)
-                    lines.append(row)
                 except:
-                    lines.append(row)
                     continue
                 if len(embs) == 0:
                     continue
                 shape = np.array(shape).astype(np.int16)
 
-                self.embsDict[id] = [embs, shape, self.subject_dictionary[int(row['id'])]]
+                self.embsDict[id] = [embs, shape, int(row['id'])]
                 id += 1
-
-        with open(csvPath, mode='w', newline='', encoding='utf-8') as f:
-            writer = csv.DictWriter(f, oneCsvFile.FIELD_NAMES)
-            writer.writerows(lines)
 
         print('successfully done!')
         np.save(embspath, self.embsDict)
+        return id
 
     def preProcessingWithCsv(self):
         self.getPreProcessCsvPath()
         csvPath = self.preProcessPath
-        dirname = os.path.dirname(csvPath)
         if csvPath == '':
             self.errorMessage('None path', 'please choose a path ')
         elif csvPath.split('.')[-1] != 'csv':
@@ -2089,8 +2139,8 @@ class MainWindow(QMainWindow, WindowMixin):
 
             self.make_subject_dictionary()
             self.make_path_id_dictionary()
-            self.write_embdings(csvPath, 'embs.npy')
-            self.write_embdings('localfacesset.csv', 'localembs.npy')
+            lastId = self.write_embdings(csvPath, 'embs.npy')
+            self.write_embdings('localfaceset.csv', 'localembs.npy', lastId)
 
     def read_paths(self, faceset_path, j=0):
         with open(faceset_path, mode='r', encoding='utf-8') as r:
@@ -2098,25 +2148,25 @@ class MainWindow(QMainWindow, WindowMixin):
             i = j
             for row in reader:
                 self.path_dictionary[i] = os.path.normpath(row['path'])
-                self.getembs_dictionary[i] = 0
                 i += 1
         return i
 
     def make_path_id_dictionary(self):
-        dirPath = os.path.dirname(self.preProcessPath)
-        localPath = 'localsubjects.csv'
+        localPath = 'localfaceset.csv'
+        if not os.path.isfile(localPath):
+            open(localPath, 'x')
         i = self.read_paths(self.preProcessPath)
         self.read_paths(localPath, i)
         self.path_to_id_dictionary = {self.path_dictionary[k]: k for k in self.path_dictionary}
 
     def update_subjects(self, newName):
-        dirPath = os.path.dirname(self.preProcessPath)
         subjectPath = 'localsubjects.csv'
         ids = list(self.subject_dictionary.keys())
         names = list(self.subject_name_to_id_dictionary.keys())
         if newName in names:
             ans = self.sameNameExist(newName)
             if ans == -1:
+                self.canvas.selectedShape.userid = self.subject_name_to_id_dictionary[newName]
                 return
         else:
             ans = QMessageBox.warning(self, u'Gender', u'male ?', QMessageBox.Yes | QMessageBox.No)
@@ -2124,45 +2174,12 @@ class MainWindow(QMainWindow, WindowMixin):
         id = np.max(ids) + 1
         row['id'] = id
         row['name'] = newName
-        row['gender'] = ans
+        row['gender'] = 'm' if ans == QMessageBox.Yes else 'f'
+        self.canvas.selectedShape.userid = id
         with open(subjectPath, mode='a', encoding='utf-8', newline='') as f:
             writer = csv.DictWriter(f, ['id', 'name', 'gender'])
             writer.writerow(row)
         self.make_subject_dictionary()
-
-    def update_path_id(self, file_path):
-        dirPath = os.path.dirname(self.preProcessPath)
-        imagespath = dirPath + '/imagespath.csv'
-        ids = list(self.path_dictionary.keys())
-        paths = list(self.path_to_id_dictionary.keys())
-        row = {}
-        if 'labelImg-master' in file_path:
-            file_path = file_path.split('labelImg-master')[-1][1:]
-
-        if file_path not in paths:
-            id = np.max(ids) + 1
-            row['id'] = id
-            row['path'] = file_path
-            row['getembs'] = 0
-            with open(imagespath, mode='a', encoding='utf-8', newline='') as f:
-                writer = csv.DictWriter(f, ['id', 'path', 'getembs'])
-                writer.writerow(row)
-            self.path_to_id_dictionary[row['path']] = int(row['id'])
-            self.path_dictionary[int(row['id'])] = os.path.normpath(row['path'])
-            self.getembs_dictionary[int(row['id'])] = 0
-
-    def update_getembeding(self):
-        dirPath = os.path.dirname(self.preProcessPath)
-        imagespath = dirPath + '/imagespath.csv'
-        lines = []
-        with open(imagespath, mode='r', encoding='utf-8') as r:
-            reader = csv.DictReader(r, ['id', 'path', 'getembs'])
-            for row in reader:
-                row['getembs'] = self.getembs_dictionary[int(row['id'])]
-                lines.append(row)
-        with open(imagespath, mode='w', newline='', encoding='utf-8', ) as f:
-            writer = csv.DictWriter(f, ['id', 'path', 'getembs'])
-            writer.writerows(lines)
 
     def read_subjects(self, subjectPath):
         if not os.path.isfile:
@@ -2175,13 +2192,24 @@ class MainWindow(QMainWindow, WindowMixin):
                 try:
                     self.subject_dictionary[int(row['id'])] = row['name']
                 except:
-                    print('csvReader cant convert this row of subjects : ' + str(row))
+                    if row['id'] != 'id':
+                        print('csvReader cant convert this row of subjects : ' + str(row))
                     continue
+
+    def update_embeding(self):
+        if os.path.exists('embs.npy'):
+            a = np.load('embs.npy', allow_pickle='TRUE').item()
+            self.len_faceset = len(list(a.keys()))
+            self.embsDict.update(a)
+        if os.path.exists('localembs.npy'):
+            self.embsDict.update(np.load('localembs.npy', allow_pickle='TRUE').item())
+        else:
+            np.save('localembs', self.embsDict, )
 
     def make_subject_dictionary(self, ):
         dirPath = os.path.dirname(self.preProcessPath)
         subjectPath = dirPath + '/subjects.csv'
-        localPath = '/localsubjects.csv'
+        localPath = 'localsubjects.csv'
         if not os.path.isfile(localPath):
             open(localPath, 'x')
 
@@ -2223,28 +2251,32 @@ class MainWindow(QMainWindow, WindowMixin):
                                     self.image_size)
         self.buttons[i].clicked.connect(partial(self.p, recomms[i][3]))
         self.buttons[i].setToolTip(imgPath)
-
+        self.buttons[i].setShortcut('Alt+' + str(i + 1))
         self.labels.append(
-            QLabel(parent=self.w, text='name :' + recomms[i][3] + '\nsimilarity : ' + str(round(recomms[i][0], 3))))
+            QLabel(parent=self.w, text='name :' + self.subject_dictionary[recomms[i][3]] + '\nsimilarity : ' + str(
+                round(recomms[i][0], 3))))
 
         self.labels[i].setGeometry(i * self.image_size + 3 * self.image_pad, self.image_size,
                                    self.image_size,
                                    10 * self.image_pad)
 
-    def p(self, name):
+    def p(self, shapeid):
+        name = self.subject_dictionary[shapeid]
         self.clickedItem = name
         self.canvas.selectedShape.label = name
+        self.canvas.selectedShape.userid = shapeid
+        self.canvas.selectedShape.mask = 1 * self.maskCheckBox.isChecked()
         item = self.currentItem()
 
         if self.clickedItem is None:
             text = item.text()
-            if self.newId is not None:
-                text = self.newId[0]
+            if self.newName is not None:
+                text = self.newName[0]
         else:
             text = self.clickedItem
         if text is not None:
             item.setText(text)
-            item.setBackground(QColor(0, 0, 0, 200))
+            item.setBackground(QColor(0, 255, 0, 200))
             self.setDirty()
             self.updateComboBox()
 
@@ -2252,19 +2284,19 @@ class MainWindow(QMainWindow, WindowMixin):
 
     def getNewOne(self):
         name = QInputDialog(self.w)
-        self.newId = name.getText(self.w, 'title', 'Enter new Name :')
+        self.newName = name.getText(self.w, 'title', 'Enter new Name :')
         item = self.currentItem()
-
+        self.canvas.selectedShape.mask = 1 * self.maskCheckBox.isChecked()
         if self.clickedItem is None:
             text = item.text()
-            if self.newId is not None:
-                text = self.newId[0]
+            if self.newName is not None:
+                text = self.newName[0]
                 self.update_subjects(text)
         else:
             text = self.clickedItem
         if text is not None:
             item.setText(text)
-            item.setBackground(QColor(0, 0, 0, 200))
+            item.setBackground(QColor(0, 255, 0, 200))
             self.setDirty()
             self.updateComboBox()
         self.w.close()
@@ -2282,6 +2314,7 @@ class MainWindow(QMainWindow, WindowMixin):
                                     self.image_size // 2 + self.image_pad // 2,
                                     self.image_size - 6 * self.image_pad, 2 * self.image_pad)
         self.buttons[i].clicked.connect(self.getNewOne)
+        self.buttons[i].setShortcut("Ctrl+n")
 
 
 def inverted(color):

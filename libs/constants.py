@@ -30,3 +30,4 @@ BUTTON_CSS = "background-image : url(xxxxx.jpg);margin: 1px; padding: 10px;\
                                border-style: solid; \
                                border-radius: 4px; border-width: 3px; \
                                border-color: rgba(0,0,0,255);"
+SETTING_PREPATH = 'prepath'
